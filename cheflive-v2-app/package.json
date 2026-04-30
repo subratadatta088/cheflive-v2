@@ -1,0 +1,21 @@
+{
+  "name": "cheflive-v2-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n UI,APP -c cyan,green \"npm:dev:ui\" \"npm:dev:electron\"",
+    "dev:ui": "npm --prefix ../cheflive-v2-ui run dev -- --strictPort --port 5173",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "build:ui": "npm --prefix ../cheflive-v2-ui run build",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^38.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "wait-on": "^8.0.0"
+  }
+}

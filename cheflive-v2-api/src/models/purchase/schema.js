@@ -1,0 +1,46 @@
+const { z } = require('zod')
+const { PurchaseItemNestedCreateSchema } = require('../purchaseItem/schema')
+
+const PurchaseIdSchema = z.number().int().positive()
+const OrganizationIdSchema = z.number().int().positive()
+
+const PurchaseCreateSchema = z.object({
+  organization_id: OrganizationIdSchema,
+  origin_id: z.number().int().positive(),
+  date: z.string().min(1),
+  note: z.string().optional(),
+  items: z.array(PurchaseItemNestedCreateSchema).optional(),
+})
+
+const PurchaseUpdateSchema = z.object({
+  origin_id: z.number().int().positive().optional(),
+  date: z.string().min(1).optional(),
+  note: z.string().nullable().optional(),
+})
+
+const PurchaseRowSchema = z.object({
+  id: PurchaseIdSchema,
+  organization_id: OrganizationIdSchema,
+  origin_id: z.number().int().positive(),
+  date: z.string(),
+  note: z.string().nullable().optional(),
+  created_at: z.string().optional().nullable(),
+  updated_at: z.string().optional().nullable(),
+  deleted_at: z.string().optional().nullable(),
+})
+
+const PurchaseListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  q: z.string().min(1).optional(),
+  origin_id: z.coerce.number().int().positive().optional(),
+  organization_id: z.coerce.number().int().positive().optional(),
+})
+
+module.exports = {
+  PurchaseIdSchema,
+  PurchaseCreateSchema,
+  PurchaseUpdateSchema,
+  PurchaseRowSchema,
+  PurchaseListQuerySchema,
+}

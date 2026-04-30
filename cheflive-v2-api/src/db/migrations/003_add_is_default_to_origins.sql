@@ -1,0 +1,2 @@
+ALTER TABLE origins ADD COLUMN is_default INTEGER DEFAULT 0;
+

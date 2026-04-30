@@ -1,0 +1,126 @@
+function readDbDriver() {
+  return (process.env.DB_DRIVER || process.env.DATABASE_DRIVER || 'sqlite').toLowerCase()
+}
+
+function getUserModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { UserSqliteDAL } = require('./sqlite/models/UserSqliteDAL')
+    return new UserSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getRoleModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { RoleSqliteDAL } = require('./sqlite/models/RoleSqliteDAL')
+    return new RoleSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getOrganizationModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { OrganizationSqliteDAL } = require('./sqlite/models/OrganizationSqliteDAL')
+    return new OrganizationSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getIngredientModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { IngredientSqliteDAL } = require('./sqlite/models/IngredientSqliteDAL')
+    return new IngredientSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getOriginModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { OriginSqliteDAL } = require('./sqlite/models/OriginSqliteDAL')
+    return new OriginSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getPreparationModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { PreparationSqliteDAL } = require('./sqlite/models/PreparationSqliteDAL')
+    return new PreparationSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getPreparationItemModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { PreparationItemSqliteDAL } = require('./sqlite/models/PreparationItemSqliteDAL')
+    return new PreparationItemSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getUnitConversionModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { UnitConversionSqliteDAL } = require('./sqlite/models/UnitConversionSqliteDAL')
+    return new UnitConversionSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getPurchaseModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { PurchaseSqliteDAL } = require('./sqlite/models/PurchaseSqliteDAL')
+    return new PurchaseSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getPurchaseItemModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { PurchaseItemSqliteDAL } = require('./sqlite/models/PurchaseItemSqliteDAL')
+    return new PurchaseItemSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+module.exports = {
+  getUserModel,
+  getRoleModel,
+  getOrganizationModel,
+  getIngredientModel,
+  getOriginModel,
+  getPreparationModel,
+  getPreparationItemModel,
+  getUnitConversionModel,
+  getPurchaseModel,
+  getPurchaseItemModel,
+}

@@ -1,0 +1,423 @@
+const { z } = require('zod')
+const {
+  getIngredientModel,
+  getOriginModel,
+  getPreparationModel,
+  getPreparationItemModel,
+  getPurchaseItemModel,
+  getPurchaseModel,
+  getUnitConversionModel,
+  getUserModel,
+} = require('../drivers/factory')
+
+const RolesSchema = z.array(z.enum(['superadmin', 'admin', 'member']))
+
+function forbidden(res) {
+  return res.status(403).json({ error: 403, message: 'You are not authorized to access this resource' })
+}
+
+function withScopedModels(req, res, next) {
+  const rolesParsed = RolesSchema.safeParse(req.user?.roles)
+  if (!rolesParsed.success) return forbidden(res)
+  const roles = rolesParsed.data
+
+  const userDal = getUserModel()
+  const ingredientDal = getIngredientModel()
+  const originDal = getOriginModel()
+  const preparationDal = getPreparationModel()
+  const preparationItemDal = getPreparationItemModel()
+  const unitConversionDal = getUnitConversionModel()
+  const purchaseDal = getPurchaseModel()
+  const purchaseItemDal = getPurchaseItemModel()
+
+  if (roles.includes('superadmin')) {
+    req.models = {
+      user: userDal,
+      ingredient: ingredientDal,
+      origin: originDal,
+      preparation: preparationDal,
+      preparationItem: preparationItemDal,
+      unitConversion: unitConversionDal,
+      purchase: purchaseDal,
+      purchaseItem: purchaseItemDal,
+    }
+    return next()
+  }
+
+  if (roles.includes('admin')) {
+    if (!req.user.organization_id) return forbidden(res)
+    req.models = {
+      user: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await userDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await userDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        getAll: async () => {
+          const rows = await userDal.getAll()
+          return rows.filter((r) => r.organization_id === req.user.organization_id)
+        },
+        updateById: async (id, data) => {
+          const existing = await userDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await userDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await userDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await userDal.deleteById(id)
+        },
+      },
+      ingredient: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await ingredientDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await ingredientDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await ingredientDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await ingredientDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await ingredientDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await ingredientDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await ingredientDal.deleteById(id)
+        },
+      },
+      origin: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await originDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await originDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await originDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await originDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await originDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await originDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await originDal.deleteById(id)
+        },
+      },
+      preparation: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await preparationDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await preparationDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await preparationDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await preparationDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await preparationDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await preparationDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await preparationDal.deleteById(id)
+        },
+      },
+      preparationItem: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await preparationItemDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await preparationItemDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await preparationItemDal.list({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+        updateById: async (id, data) => {
+          const existing = await preparationItemDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await preparationItemDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await preparationItemDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await preparationItemDal.deleteById(id)
+        },
+      },
+      unitConversion: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await unitConversionDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await unitConversionDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await unitConversionDal.list({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+        updateById: async (id, data) => {
+          const existing = await unitConversionDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await unitConversionDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await unitConversionDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await unitConversionDal.deleteById(id)
+        },
+      },
+      purchase: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await purchaseDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await purchaseDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await purchaseDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await purchaseDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await purchaseDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await purchaseDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await purchaseDal.deleteById(id)
+        },
+      },
+      purchaseItem: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await purchaseItemDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await purchaseItemDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await purchaseItemDal.list({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+        updateById: async (id, data) => {
+          const existing = await purchaseItemDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await purchaseItemDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await purchaseItemDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await purchaseItemDal.deleteById(id)
+        },
+      },
+    }
+    return next()
+  }
+
+  req.models = {
+    user: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        if (Number(id) !== req.user.id) return forbidden(res)
+        return await userDal.getById(req.user.id)
+      },
+      getAll: async () => {
+        const row = await userDal.getById(req.user.id)
+        return row ? [row] : []
+      },
+      updateById: async (id, data) => {
+        if (Number(id) !== req.user.id) return forbidden(res)
+        if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+          return forbidden(res)
+        return await userDal.updateById(req.user.id, data)
+      },
+      deleteById: async (id) => {
+        if (Number(id) !== req.user.id) return forbidden(res)
+        return await userDal.deleteById(req.user.id)
+      },
+    },
+    ingredient: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await ingredientDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await ingredientDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    origin: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await originDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await originDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    preparation: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await preparationDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await preparationDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    preparationItem: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await preparationItemDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await preparationItemDal.list({
+          ...query,
+          organization_id: req.user.organization_id,
+        })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    unitConversion: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await unitConversionDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await unitConversionDal.list({
+          ...query,
+          organization_id: req.user.organization_id,
+        })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    purchase: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await purchaseDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await purchaseDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    purchaseItem: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await purchaseItemDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await purchaseItemDal.list({
+          ...query,
+          organization_id: req.user.organization_id,
+        })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+  }
+  return next()
+}
+
+module.exports = { withScopedModels }
