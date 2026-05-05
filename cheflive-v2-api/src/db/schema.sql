@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS ingredients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL,
 
+  category_id INTEGER NOT NULL,
+
   name TEXT NOT NULL,
   unit TEXT NOT NULL,
 
@@ -85,6 +87,21 @@ CREATE TABLE IF NOT EXISTS ingredients (
   updated_at TEXT,
   deleted_at TEXT,
   deleted_by INTEGER
+);
+
+-- CATEGORIES
+CREATE TABLE IF NOT EXISTS categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organization_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  is_active INTEGER DEFAULT 1,
+  created_by INTEGER,
+  updated_by INTEGER,
+  created_at TEXT,
+  updated_at TEXT,
+  deleted_at TEXT,
+  deleted_by INTEGER,
+  UNIQUE (organization_id, name)
 );
 
 -- INGREDIENT TAGS

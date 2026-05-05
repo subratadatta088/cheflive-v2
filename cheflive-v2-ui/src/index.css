@@ -10,4 +10,19 @@
     background-color: #ffffff;
     color: #0f172a;
   }
+
+  /* Keep page scrollable but hide scrollbars (cross-browser). */
+  html,
+  body {
+    overflow-y: auto;
+    -ms-overflow-style: none; /* IE/Edge Legacy */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none; /* Chrome/Safari/Edge */
+  }
 }

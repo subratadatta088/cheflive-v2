@@ -35,6 +35,15 @@ function all(db, sql, params = []) {
   })
 }
 
+function exec(db, sql) {
+  return new Promise((resolve, reject) => {
+    db.exec(sql, (err) => {
+      if (err) return reject(err)
+      resolve(true)
+    })
+  })
+}
+
 function normalizeIngredientRow(row) {
   const parsed = IngredientRowSchema.parse(row)
 
@@ -67,6 +76,18 @@ class IngredientSqliteDAL extends IngredientModel {
     this.db = openSqlite()
   }
 
+  async listNamesByOrganization(organization_id) {
+    const rows = await all(
+      this.db,
+      `SELECT name
+       FROM ingredients
+       WHERE organization_id = ?
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [organization_id],
+    )
+    return rows.map((r) => String(r?.name ?? '')).filter(Boolean)
+  }
+
   async create(data) {
     const payload = IngredientCreateSchema.parse(data)
     const now = new Date().toISOString()
@@ -77,10 +98,11 @@ class IngredientSqliteDAL extends IngredientModel {
 
     const result = await run(
       this.db,
-      `INSERT INTO ingredients (organization_id, name, unit, base_price, tags, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ingredients (organization_id, category_id, name, unit, base_price, tags, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payload.organization_id,
+        payload.category_id,
         payload.name,
         payload.unit,
         payload.base_price ?? null,
@@ -94,9 +116,96 @@ class IngredientSqliteDAL extends IngredientModel {
     return await this.getById(result.lastID)
   }
 
+  /**
+   * Transaction-based bulk insert with per-row savepoints so failures don't rollback the whole batch.
+   * @param {Array<import('../../../models/ingredient/schema').IngredientCreateSchema>} items
+   * @returns {Promise<{ created: number, failures: { name: string|null, error: string }[] }>}
+   */
+  async bulkCreate(items) {
+    const inputs = Array.isArray(items) ? items : []
+    if (!inputs.length) return { created: 0, failures: [] }
+
+    let created = 0
+    /** @type {{ name: string|null, error: string }[]} */
+    const failures = []
+
+    await exec(this.db, 'BEGIN')
+    try {
+      for (let i = 0; i < inputs.length; i++) {
+        const raw = inputs[i]
+        let payload
+        try {
+          payload = IngredientCreateSchema.parse(raw)
+        } catch (e) {
+          failures.push({ name: String(raw?.name ?? '').trim() || null, error: 'Invalid payload' })
+          continue
+        }
+
+        const sp = `sp_ing_${i}`
+        await exec(this.db, `SAVEPOINT ${sp}`)
+        try {
+          const now = new Date().toISOString()
+          const tagsJson = payload.tags ? JSON.stringify(payload.tags) : null
+          const isActiveInt = payload.is_active === undefined ? 1 : payload.is_active ? 1 : 0
+
+          await run(
+            this.db,
+            `INSERT INTO ingredients (organization_id, category_id, name, unit, base_price, tags, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              payload.organization_id,
+              payload.category_id,
+              payload.name,
+              payload.unit,
+              payload.base_price ?? null,
+              tagsJson,
+              isActiveInt,
+              now,
+              now,
+            ],
+          )
+
+          await exec(this.db, `RELEASE ${sp}`)
+          created++
+        } catch (e) {
+          // rollback only this row
+          try {
+            await exec(this.db, `ROLLBACK TO ${sp}`)
+            await exec(this.db, `RELEASE ${sp}`)
+          } catch {
+            // ignore
+          }
+          failures.push({
+            name: String(payload?.name ?? '').trim() || null,
+            error: String(e?.message || 'Insert failed'),
+          })
+        }
+      }
+
+      await exec(this.db, 'COMMIT')
+      return { created, failures }
+    } catch (e) {
+      try {
+        await exec(this.db, 'ROLLBACK')
+      } catch {
+        // ignore
+      }
+      throw e
+    }
+  }
+
   async getById(id) {
     const ingredientId = IngredientIdSchema.parse(id)
-    const row = await get(this.db, `SELECT * FROM ingredients WHERE id = ?`, [ingredientId])
+    const row = await get(
+      this.db,
+      `SELECT i.*, c.name AS category_name
+       FROM ingredients i
+       LEFT JOIN categories c
+         ON c.id = i.category_id
+        AND c.organization_id = i.organization_id
+       WHERE i.id = ?`,
+      [ingredientId],
+    )
     if (!row) return null
     const ing = normalizeIngredientRow(row)
     const convRows = await all(
@@ -117,34 +226,52 @@ class IngredientSqliteDAL extends IngredientModel {
   }
 
   async list({ organization_id, page, limit, q, is_active }) {
-    const where = ['organization_id = ?']
-    const params = [organization_id]
+    const offset = (page - 1) * limit
+
+    const baseWhere = [
+      'i.organization_id = ?',
+      "(i.deleted_at IS NULL OR i.deleted_at = '')",
+    ]
+    const baseParams = [organization_id]
 
     if (q) {
-      where.push('name LIKE ?')
-      params.push(`%${q}%`)
+      baseWhere.push('i.name LIKE ?')
+      baseParams.push(`%${q}%`)
     }
 
     if (is_active !== undefined) {
-      const v =
-        is_active === true || is_active === '1' || is_active === 1 ? 1 : 0
-      where.push('is_active = ?')
-      params.push(v)
+      const v = is_active === true || is_active === '1' || is_active === 1 ? 1 : 0
+      baseWhere.push('i.is_active = ?')
+      baseParams.push(v)
     }
 
-    const offset = (page - 1) * limit
+    const whereSql = baseWhere.length ? `WHERE ${baseWhere.join(' AND ')}` : ''
+
+    const countRow = await get(
+      this.db,
+      `SELECT COUNT(1) AS total
+       FROM ingredients i
+       ${whereSql}`,
+      baseParams,
+    )
+
+    const total = Number(countRow?.total || 0)
 
     const rows = await all(
       this.db,
-      `SELECT * FROM ingredients
-       WHERE ${where.join(' AND ')}
-       ORDER BY id DESC
+      `SELECT i.*, c.name AS category_name
+       FROM ingredients i
+       LEFT JOIN categories c
+         ON c.id = i.category_id
+        AND c.organization_id = i.organization_id
+       ${whereSql}
+       ORDER BY i.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...baseParams, limit, offset],
     )
 
     const ingredients = rows.map(normalizeIngredientRow)
-    if (!ingredients.length) return ingredients
+    if (!ingredients.length) return { items: [], total }
 
     const ingredientIds = ingredients.map((i) => i.id)
     const placeholders = ingredientIds.map(() => '?').join(', ')
@@ -169,10 +296,12 @@ class IngredientSqliteDAL extends IngredientModel {
       byIng.set(iid, arr)
     }
 
-    return ingredients.map((i) => ({
+    const items = ingredients.map((i) => ({
       ...i,
       unit_conversions: byIng.get(i.id) || [],
     }))
+
+    return { items, total }
   }
 
   async updateById(id, data) {
@@ -182,6 +311,10 @@ class IngredientSqliteDAL extends IngredientModel {
     const fields = []
     const params = []
 
+    if (payload.category_id !== undefined) {
+      fields.push('category_id = ?')
+      params.push(payload.category_id)
+    }
     if (payload.name !== undefined) {
       fields.push('name = ?')
       params.push(payload.name)

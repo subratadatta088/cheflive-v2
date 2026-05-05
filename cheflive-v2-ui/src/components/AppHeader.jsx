@@ -18,7 +18,7 @@ function formatDateTime(d) {
   return { date, time }
 }
 
-export function AppHeader({ userName = 'User', onLogout }) {
+export function AppHeader({ username = 'User', onLogout }) {
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export function AppHeader({ userName = 'User', onLogout }) {
             <UserRound className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="text-sm text-slate-600">
-            Hi, <span className="font-semibold text-slate-900">{userName}</span>
+            Hi, <span className="font-semibold text-slate-900">{username}</span>
           </div>
         </div>
 

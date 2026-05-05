@@ -24,6 +24,13 @@ import { Search } from 'lucide-react'
  *   searchPlaceholder?: string,
  *   initialSearch?: string,
  *   onSearchChange?: (value: string) => void,
+ *   manualPagination?: boolean,
+ *   page?: number,
+ *   pageSize?: number,
+ *   total?: number,
+ *   search?: string,
+ *   onPageChange?: (page: number) => void,
+ *   onPageSizeChange?: (size: number) => void,
  *   initialDateFrom?: string,
  *   initialDateTo?: string,
  *   onDateRangeChange?: (range: { from: string, to: string }) => void,
@@ -41,33 +48,45 @@ export function DataTable({
   searchPlaceholder = 'Search…',
   initialSearch = '',
   onSearchChange,
+  manualPagination = false,
+  page: controlledPage,
+  pageSize: controlledPageSize,
+  total: controlledTotal,
+  search: controlledSearch,
+  onPageChange,
+  onPageSizeChange,
   initialDateFrom = '',
   initialDateTo = '',
   onDateRangeChange,
   emptyText = 'No results',
   className = '',
 }) {
-  const [search, setSearch] = useState(initialSearch)
-  const [pageSize, setPageSize] = useState(initialPageSize)
-  const [page, setPage] = useState(initialPage)
+  const [searchState, setSearchState] = useState(initialSearch)
+  const [pageSizeState, setPageSizeState] = useState(initialPageSize)
+  const [pageState, setPageState] = useState(initialPage)
   const [dateFrom, setDateFrom] = useState(initialDateFrom)
   const [dateTo, setDateTo] = useState(initialDateTo)
 
   const safeColumns = Array.isArray(columns) ? columns : []
   const safeRows = Array.isArray(rows) ? rows : []
 
+  const search = manualPagination ? (controlledSearch ?? '') : searchState
+  const pageSize = manualPagination ? (controlledPageSize ?? initialPageSize) : pageSizeState
+  const page = manualPagination ? (controlledPage ?? initialPage) : pageState
+
   const filteredRows = useMemo(() => {
+    if (manualPagination) return safeRows
     const q = search.trim().toLowerCase()
     if (!q) return safeRows
     return safeRows.filter((r) => JSON.stringify(r).toLowerCase().includes(q))
-  }, [safeRows, search])
+  }, [manualPagination, safeRows, search])
 
-  const total = filteredRows.length
+  const total = manualPagination ? Number(controlledTotal ?? filteredRows.length) : filteredRows.length
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)))
   const safePage = Math.min(Math.max(1, page), totalPages)
   const startIdx = (safePage - 1) * pageSize
   const endIdx = Math.min(total, startIdx + pageSize)
-  const pagedRows = filteredRows.slice(startIdx, endIdx)
+  const pagedRows = manualPagination ? filteredRows : filteredRows.slice(startIdx, endIdx)
 
   return (
     <section className={`w-full ${className}`}>
@@ -78,8 +97,13 @@ export function DataTable({
             value={pageSize}
             onChange={(e) => {
               const next = Number(e.target.value)
-              setPageSize(next)
-              setPage(1)
+              if (manualPagination) {
+                onPageSizeChange?.(next)
+                onPageChange?.(1)
+              } else {
+                setPageSizeState(next)
+                setPageState(1)
+              }
             }}
             className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
@@ -123,9 +147,15 @@ export function DataTable({
           <input
             value={search}
             onChange={(e) => {
-              setSearch(e.target.value)
-              onSearchChange?.(e.target.value)
-              setPage(1)
+              const v = e.target.value
+              if (manualPagination) {
+                onSearchChange?.(v)
+                onPageChange?.(1)
+              } else {
+                setSearchState(v)
+                onSearchChange?.(v)
+                setPageState(1)
+              }
             }}
             placeholder={searchPlaceholder}
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
@@ -185,7 +215,7 @@ export function DataTable({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => (manualPagination ? onPageChange?.(Math.max(1, safePage - 1)) : setPageState((p) => Math.max(1, p - 1)))}
               disabled={safePage <= 1}
               className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
@@ -196,7 +226,9 @@ export function DataTable({
             </div>
             <button
               type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() =>
+                manualPagination ? onPageChange?.(Math.min(totalPages, safePage + 1)) : setPageState((p) => Math.min(totalPages, p + 1))
+              }
               disabled={safePage >= totalPages}
               className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >

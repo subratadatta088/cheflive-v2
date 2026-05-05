@@ -34,6 +34,10 @@ function buildAppMenu(mainWindow) {
           label: 'Preparations',
           click: () => mainWindow.webContents.send('app:navigate', { path: '/inventory/preparations' }),
         },
+        {
+          label: 'Categories',
+          click: () => mainWindow.webContents.send('app:navigate', { path: '/inventory/categories' }),
+        }
       ],
     },
     {

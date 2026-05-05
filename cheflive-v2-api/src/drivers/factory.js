@@ -57,6 +57,17 @@ function getOriginModel() {
   throw new Error(`Unsupported DB_DRIVER: ${driver}`)
 }
 
+function getCategoryModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { CategorySqliteDAL } = require('./sqlite/models/CategorySqliteDAL')
+    return new CategorySqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
 function getPreparationModel() {
   const driver = readDbDriver()
 
@@ -118,6 +129,7 @@ module.exports = {
   getOrganizationModel,
   getIngredientModel,
   getOriginModel,
+  getCategoryModel,
   getPreparationModel,
   getPreparationItemModel,
   getUnitConversionModel,

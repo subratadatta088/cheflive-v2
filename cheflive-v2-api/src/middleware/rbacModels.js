@@ -1,5 +1,6 @@
 const { z } = require('zod')
 const {
+  getCategoryModel,
   getIngredientModel,
   getOriginModel,
   getPreparationModel,
@@ -22,6 +23,7 @@ function withScopedModels(req, res, next) {
   const roles = rolesParsed.data
 
   const userDal = getUserModel()
+  const categoryDal = getCategoryModel()
   const ingredientDal = getIngredientModel()
   const originDal = getOriginModel()
   const preparationDal = getPreparationModel()
@@ -33,6 +35,7 @@ function withScopedModels(req, res, next) {
   if (roles.includes('superadmin')) {
     req.models = {
       user: userDal,
+      category: categoryDal,
       ingredient: ingredientDal,
       origin: originDal,
       preparation: preparationDal,
@@ -75,6 +78,35 @@ function withScopedModels(req, res, next) {
           if (!existing) return false
           if (existing.organization_id !== req.user.organization_id) return forbidden(res)
           return await userDal.deleteById(id)
+        },
+      },
+      category: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await categoryDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await categoryDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await categoryDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await categoryDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await categoryDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await categoryDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await categoryDal.deleteById(id)
         },
       },
       ingredient: {
@@ -308,6 +340,20 @@ function withScopedModels(req, res, next) {
         if (Number(id) !== req.user.id) return forbidden(res)
         return await userDal.deleteById(req.user.id)
       },
+    },
+    category: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await categoryDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await categoryDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
     },
     ingredient: {
       create: async () => forbidden(res),
