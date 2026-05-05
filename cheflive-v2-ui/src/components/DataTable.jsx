@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 
 /**
@@ -36,6 +36,7 @@ import { Search } from 'lucide-react'
  *   onDateRangeChange?: (range: { from: string, to: string }) => void,
  *   emptyText?: string,
  *   className?: string,
+ *   rowSelection?: { selectedIds: number[], onChange: (ids: number[]) => void, getRowId?: (row: T) => number },
  }} props
  */
 export function DataTable({
@@ -60,6 +61,7 @@ export function DataTable({
   onDateRangeChange,
   emptyText = 'No results',
   className = '',
+  rowSelection = null,
 }) {
   const [searchState, setSearchState] = useState(initialSearch)
   const [pageSizeState, setPageSizeState] = useState(initialPageSize)
@@ -87,6 +89,39 @@ export function DataTable({
   const startIdx = (safePage - 1) * pageSize
   const endIdx = Math.min(total, startIdx + pageSize)
   const pagedRows = manualPagination ? filteredRows : filteredRows.slice(startIdx, endIdx)
+
+  const getRowIdFn = rowSelection?.getRowId
+  const getSelectId = useCallback(
+    (r) => (getRowIdFn ? getRowIdFn(r) : Number(r?.id)),
+    [getRowIdFn],
+  )
+  const selectedSet = useMemo(() => new Set(rowSelection?.selectedIds ?? []), [rowSelection?.selectedIds])
+  const pageIds = useMemo(() => pagedRows.map((r) => getSelectId(r)).filter((id) => Number.isFinite(id)), [pagedRows, getSelectId])
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedSet.has(id))
+  const somePageSelected = pageIds.some((id) => selectedSet.has(id))
+
+  const toggleSelectAllOnPage = () => {
+    if (!rowSelection) return
+    const next = new Set(rowSelection.selectedIds)
+    if (allPageSelected) {
+      for (const id of pageIds) next.delete(id)
+    } else {
+      for (const id of pageIds) next.add(id)
+    }
+    rowSelection.onChange([...next])
+  }
+
+  const toggleRowSelected = (row) => {
+    if (!rowSelection) return
+    const id = getSelectId(row)
+    if (!Number.isFinite(id)) return
+    const next = new Set(rowSelection.selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    rowSelection.onChange([...next])
+  }
+
+  const colCount = safeColumns.length + (rowSelection ? 1 : 0)
 
   return (
     <section className={`w-full ${className}`}>
@@ -165,14 +200,29 @@ export function DataTable({
       </div>
 
       <div className="w-full overflow-x-auto border-y border-slate-200 bg-white">
-        <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[720px] border-collapse text-left text-sm leading-snug">
           <thead className="bg-slate-50">
             <tr>
+              {rowSelection ? (
+                <th scope="col" className="w-10 border-b border-slate-200 px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
+                    checked={allPageSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = somePageSelected && !allPageSelected
+                    }}
+                    onChange={toggleSelectAllOnPage}
+                    aria-label="Select all rows on this page"
+                    disabled={pageIds.length === 0}
+                  />
+                </th>
+              ) : null}
               {safeColumns.map((c) => (
                 <th
                   key={c.key}
                   scope="col"
-                  className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-600 ${
+                  className={`whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 ${
                     c.className ?? ''
                   }`}
                 >
@@ -184,17 +234,28 @@ export function DataTable({
           <tbody>
             {pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={Math.max(1, safeColumns.length)} className="px-4 py-10 text-center text-slate-500">
+                <td colSpan={Math.max(1, colCount)} className="px-3 py-8 text-center text-slate-500">
                   {emptyText}
                 </td>
               </tr>
             ) : (
               pagedRows.map((row, idx) => (
                 <tr key={String(getRowKey?.(row, startIdx + idx) ?? startIdx + idx)} className="hover:bg-slate-50/50">
+                  {rowSelection ? (
+                    <td className="border-b border-slate-100 px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
+                        checked={selectedSet.has(getSelectId(row))}
+                        onChange={() => toggleRowSelected(row)}
+                        aria-label={`Select row ${getSelectId(row)}`}
+                      />
+                    </td>
+                  ) : null}
                   {safeColumns.map((c) => (
                     <td
                       key={c.key}
-                      className={`whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-700 ${
+                      className={`whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700 ${
                         c.cellClassName ?? ''
                       }`}
                     >
@@ -207,7 +268,7 @@ export function DataTable({
           </tbody>
         </table>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2">
           <div className="text-sm text-slate-600">
             {total === 0 ? '0 items' : `${startIdx + 1}-${endIdx} of ${total}`}
           </div>

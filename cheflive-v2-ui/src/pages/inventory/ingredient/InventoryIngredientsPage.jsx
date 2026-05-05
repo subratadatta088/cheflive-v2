@@ -2,11 +2,53 @@ import { useEffect, useMemo, useState } from 'react'
 import { Breadcrumb } from '../../../components/Breadcrumb.jsx'
 import { Button } from '../../../components/Button.jsx'
 import { DataTable } from '../../../components/DataTable.jsx'
-import { PlusCircle } from 'lucide-react'
+import { Download, Info, PlusCircle, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { deleteIngredientById, listIngredients, updateIngredientById } from '../../../apis/ingredient.js'
+import {
+  deleteIngredientById,
+  getIngredientById,
+  listIngredients,
+  updateIngredientById,
+} from '../../../apis/ingredient.js'
 import { DateTime } from '../../../components/DateTime.jsx'
 import { ConfirmModal } from '../../../components/ConfirmModal.jsx'
+
+function csvEscape(cell) {
+  const s = cell === null || cell === undefined ? '' : String(cell)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+function formatTagsForCsv(tags) {
+  if (!tags) return ''
+  if (Array.isArray(tags)) return tags.map((t) => String(t)).join('|')
+  return String(tags)
+}
+
+/** @param {Array<Record<string, unknown>>} rows */
+function ingredientsToCsv(rows) {
+  const headers = ['id', 'category_id', 'category_name', 'name', 'unit', 'base_price', 'tags', 'is_active', 'updated_at']
+  const lines = [headers.join(',')]
+  for (const r of rows) {
+    const base =
+      r.base_price === null || r.base_price === undefined ? '' : String(r.base_price)
+    const active = r.is_active === true || r.is_active === 1 || String(r.is_active) === '1'
+    lines.push(
+      [
+        csvEscape(r.id),
+        csvEscape(r.category_id),
+        csvEscape(r.category_name ?? ''),
+        csvEscape(r.name ?? ''),
+        csvEscape(r.unit ?? ''),
+        csvEscape(base),
+        csvEscape(formatTagsForCsv(r.tags)),
+        csvEscape(active ? '1' : '0'),
+        csvEscape(r.updated_at ?? ''),
+      ].join(','),
+    )
+  }
+  return lines.join('\r\n')
+}
 
 export function InventoryIngredientsPage() {
   const navigate = useNavigate()
@@ -22,6 +64,9 @@ export function InventoryIngredientsPage() {
   const [editRow, setEditRow] = useState(null)
   const [editForm, setEditForm] = useState(() => ({ name: '', unit: '', base_price: '' }))
   const [deleteRow, setDeleteRow] = useState(null)
+  const [selectedRowIds, setSelectedRowIds] = useState(() => [])
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [exportingCsv, setExportingCsv] = useState(false)
 
   const columns = useMemo(
     () => [
@@ -134,6 +179,10 @@ export function InventoryIngredientsPage() {
   }, [page, pageSize, search])
 
   useEffect(() => {
+    if (selectedRowIds.length === 0 && bulkDeleteOpen) setBulkDeleteOpen(false)
+  }, [selectedRowIds.length, bulkDeleteOpen])
+
+  useEffect(() => {
     const close = () => setOpenMenuForId(null)
     window.addEventListener('mousedown', close)
     window.addEventListener('scroll', close, true)
@@ -145,11 +194,83 @@ export function InventoryIngredientsPage() {
     }
   }, [])
 
+  async function exportIngredientsCsv() {
+    setError('')
+    setExportingCsv(true)
+    try {
+      const seen = new Set()
+      const ids = []
+      for (const raw of selectedRowIds) {
+        const n = Number(raw)
+        if (!Number.isFinite(n) || seen.has(n)) continue
+        seen.add(n)
+        ids.push(n)
+      }
+      if (ids.length === 0) return
+
+      const loaded = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const data = await getIngredientById(id)
+            return data?.ingredient ?? null
+          } catch {
+            return null
+          }
+        }),
+      )
+      const all = loaded.filter(Boolean)
+      if (all.length === 0) {
+        setError('Could not load selected ingredients for export.')
+        return
+      }
+      if (all.length < ids.length) {
+        setError(`Exported ${all.length} of ${ids.length} selected rows. Some could not be loaded.`)
+      }
+      const csv = ingredientsToCsv(all)
+      const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ingredients-export-${new Date().toISOString().slice(0, 10)}.csv`
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || 'Failed to export CSV')
+    } finally {
+      setExportingCsv(false)
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Breadcrumb items={[{ label: 'Inventory' }, { label: 'Ingredients' }]} />
         <div className="flex flex-wrap items-center gap-2">
+          {selectedRowIds.length > 0 ? (
+            <>
+              <span
+                className="inline-flex items-center gap-1.5 text-sm text-slate-600"
+                title={`${selectedRowIds.length} row${selectedRowIds.length === 1 ? '' : 's'} selected`}
+              >
+                <Info className="h-4 w-4 shrink-0 text-red-900" strokeWidth={2.75} aria-hidden="true" />
+                <span className="tabular-nums">
+                  <span className="sr-only">Selected rows: </span>
+                  {selectedRowIds.length} selected
+                </span>
+              </span>
+              <Button variant="danger" onClick={() => setBulkDeleteOpen(true)}>
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                Delete
+              </Button>
+              <Button variant="secondary" disabled={exportingCsv} onClick={() => void exportIngredientsCsv()}>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                {exportingCsv ? 'Exporting…' : 'Export CSV'}
+              </Button>
+            </>
+          ) : null}
           <Button
             variant="secondary"
             onClick={() => {
@@ -177,6 +298,10 @@ export function InventoryIngredientsPage() {
         onSearchChange={setSearch}
         searchPlaceholder="Search ingredients…"
         emptyText={loading ? 'Loading…' : 'No ingredients found'}
+        rowSelection={{
+          selectedIds: selectedRowIds,
+          onChange: setSelectedRowIds,
+        }}
       />
 
       {/* Edit modal (simple) */}
@@ -261,13 +386,50 @@ export function InventoryIngredientsPage() {
         onCancel={() => setDeleteRow(null)}
         onConfirm={async () => {
           if (!deleteRow) return
+          const id = deleteRow.id
           try {
-            await deleteIngredientById(deleteRow.id)
+            await deleteIngredientById(id)
             setDeleteRow(null)
+            setSelectedRowIds((prev) => prev.filter((x) => Number(x) !== Number(id)))
             await reload()
           } catch (e) {
             setError(e?.response?.data?.message || e?.message || 'Failed to delete ingredient')
             setDeleteRow(null)
+          }
+        }}
+      />
+
+      <ConfirmModal
+        open={bulkDeleteOpen}
+        title="Delete selected ingredients?"
+        description={
+          selectedRowIds.length === 1
+            ? 'This will delete 1 ingredient. This cannot be undone.'
+            : `This will delete ${selectedRowIds.length} ingredients. This cannot be undone.`
+        }
+        confirmText="Delete all"
+        confirmVariant="danger"
+        onCancel={() => setBulkDeleteOpen(false)}
+        onConfirm={async () => {
+          const ids = [...selectedRowIds]
+          setBulkDeleteOpen(false)
+          if (ids.length === 0) return
+          const succeeded = []
+          let lastErr = ''
+          for (const id of ids) {
+            try {
+              await deleteIngredientById(id)
+              succeeded.push(id)
+            } catch (e) {
+              lastErr = e?.response?.data?.message || e?.message || 'Delete failed'
+            }
+          }
+          setSelectedRowIds((prev) => prev.filter((id) => !succeeded.includes(id)))
+          await reload()
+          if (succeeded.length < ids.length) {
+            setError(lastErr || `Deleted ${succeeded.length} of ${ids.length}. Some could not be deleted.`)
+          } else {
+            setError('')
           }
         }}
       />
