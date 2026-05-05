@@ -176,7 +176,6 @@ class IngredientsController {
         const cat = await req.models.category.getById(catId)
         const ok = Boolean(cat && cat.organization_id === parsed.data.organization_id)
         categoryCache.set(catId, ok)
-        categoryCache.set(catId, Boolean(cat))
         if (!ok) {
           failures.push({
             row: i + 1,

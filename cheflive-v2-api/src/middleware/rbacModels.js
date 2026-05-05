@@ -114,6 +114,17 @@ function withScopedModels(req, res, next) {
           if (data?.organization_id !== req.user.organization_id) return forbidden(res)
           return await ingredientDal.create(data)
         },
+        listNamesByOrganization: async (organization_id) => {
+          if (organization_id !== req.user.organization_id) return forbidden(res)
+          return await ingredientDal.listNamesByOrganization(organization_id)
+        },
+        bulkCreate: async (items) => {
+          const inputs = Array.isArray(items) ? items : []
+          for (const it of inputs) {
+            if (it?.organization_id !== req.user.organization_id) return forbidden(res)
+          }
+          return await ingredientDal.bulkCreate(inputs)
+        },
         getById: async (id) => {
           const row = await ingredientDal.getById(id)
           if (!row) return null
@@ -357,6 +368,11 @@ function withScopedModels(req, res, next) {
     },
     ingredient: {
       create: async () => forbidden(res),
+      listNamesByOrganization: async (organization_id) => {
+        if (organization_id !== req.user.organization_id) return forbidden(res)
+        return await ingredientDal.listNamesByOrganization(organization_id)
+      },
+      bulkCreate: async () => forbidden(res),
       getById: async (id) => {
         const row = await ingredientDal.getById(id)
         if (!row) return null

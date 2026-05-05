@@ -1,4 +1,14 @@
 @import "tailwindcss";
+
+@keyframes cheflive-toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @layer base {
   html,
   body,

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AppHeader } from './components/AppHeader.jsx'
+import { ToastProvider } from './components/Toaster.jsx'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { HomePage } from './pages/home/HomePage.jsx'
 import { InventoryCategoriesPage } from './pages/inventory/InventoryCategoriesPage.jsx'
@@ -213,7 +214,9 @@ export default function App() {
   return (
     <HashRouter>
       <AuthProvider>
-        <AppShell />
+        <ToastProvider>
+          <AppShell />
+        </ToastProvider>
       </AuthProvider>
     </HashRouter>
   )

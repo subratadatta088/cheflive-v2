@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Breadcrumb } from '../../../components/Breadcrumb.jsx'
 import { BulkUploadButton } from '../../../components/BulkUploadButton.jsx'
 import { Button } from '../../../components/Button.jsx'
@@ -8,6 +8,7 @@ import { AddCategoryModal } from '../../../components/AddCategoryModal.jsx'
 import { PlusCircle } from 'lucide-react'
 import { createCategory } from '../../../apis/category.js'
 import { bulkCreateIngredients } from '../../../apis/ingredient.js'
+import { useToast } from '../../../components/Toaster.jsx'
 import { CategoriesProvider, useCategories } from '../../../context/CategoriesContext.jsx'
 
 const UNIT_OPTIONS = [
@@ -89,12 +90,17 @@ function newIngredientRow() {
 
 function InventoryIngredientCreateInnerPage() {
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const { options: categoryOptions, addCategory } = useCategories()
   const [rows, setRows] = useState(() => [newIngredientRow()])
   const [undoStack, setUndoStack] = useState(() => /** @type {any[][]} */ ([]))
   const [addCategoryOpen, setAddCategoryOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
+  const rowsRef = useRef(rows)
+  useEffect(() => {
+    rowsRef.current = rows
+  }, [rows])
 
   useEffect(() => {
     if (!categoryOptions?.length) return
@@ -141,70 +147,84 @@ function InventoryIngredientCreateInnerPage() {
         categoryOptions.map((o) => [normalizeCategoryLabel(o.label), String(o.value)]),
       )
 
+      const fallbackCategoryId =
+        String(rowsRef.current?.[rowIndex]?.category_id ?? '').trim() ||
+        String(categoryOptions?.[0]?.value ?? '').trim()
+
+      const mapped = dataRows
+        .map((cols) => {
+          const name = String(cols[idxName] ?? '').trim()
+          if (!name) return null
+
+          let category_id = ''
+          if (idxCategoryId >= 0) {
+            category_id = String(cols[idxCategoryId] ?? '').trim()
+          } else if (idxCategory >= 0 || idxCategoryName >= 0) {
+            const pos = idxCategory >= 0 ? idxCategory : idxCategoryName
+            const catRaw = String(cols[pos] ?? '').trim()
+            category_id = /^\d+$/.test(catRaw)
+              ? catRaw
+              : (categoryByName.get(normalizeCategoryLabel(catRaw)) ?? '')
+          } else {
+            // default position if no header: [name, category, unit, base_price, tags, is_active]
+            const catRaw = String(cols[1] ?? '').trim()
+            category_id = /^\d+$/.test(catRaw)
+              ? catRaw
+              : (categoryByName.get(normalizeCategoryLabel(catRaw)) ?? '')
+          }
+
+          const unit = (idxUnit >= 0 ? cols[idxUnit] : cols[2]) ?? ''
+          const base_price = (idxBase >= 0 ? cols[idxBase] : cols[3]) ?? ''
+          const tags = (idxTags >= 0 ? cols[idxTags] : cols[4]) ?? ''
+          const is_active = (idxActive >= 0 ? cols[idxActive] : cols[5]) ?? '1'
+
+          const activeStr = String(is_active ?? '').trim().toLowerCase()
+          const activeVal = activeStr === '0' || activeStr === 'false' || activeStr === 'no' ? '0' : '1'
+
+          return {
+            ...newIngredientRow(),
+            name,
+            category_id: String(category_id || fallbackCategoryId),
+            unit: String(unit || 'kg').trim() || 'kg',
+            base_price: String(base_price ?? '').trim(),
+            tags: String(tags ?? '').trim(),
+            is_active: activeVal,
+          }
+        })
+        .filter(Boolean)
+
+      if (!mapped.length) return
+
       setRows((prev) => {
-        const fallbackCategoryId =
+        const fb =
           String(prev?.[rowIndex]?.category_id ?? '').trim() || String(categoryOptions?.[0]?.value ?? '').trim()
-
-        const mapped = dataRows
-          .map((cols) => {
-            const name = String(cols[idxName] ?? '').trim()
-            if (!name) return null
-
-            let category_id = ''
-            if (idxCategoryId >= 0) {
-              category_id = String(cols[idxCategoryId] ?? '').trim()
-            } else if (idxCategory >= 0 || idxCategoryName >= 0) {
-              const pos = idxCategory >= 0 ? idxCategory : idxCategoryName
-              const catRaw = String(cols[pos] ?? '').trim()
-              category_id = /^\d+$/.test(catRaw)
-                ? catRaw
-                : (categoryByName.get(normalizeCategoryLabel(catRaw)) ?? '')
-            } else {
-              // default position if no header: [name, category, unit, base_price, tags, is_active]
-              const catRaw = String(cols[1] ?? '').trim()
-              category_id = /^\d+$/.test(catRaw)
-                ? catRaw
-                : (categoryByName.get(normalizeCategoryLabel(catRaw)) ?? '')
-            }
-
-            const unit = (idxUnit >= 0 ? cols[idxUnit] : cols[2]) ?? ''
-            const base_price = (idxBase >= 0 ? cols[idxBase] : cols[3]) ?? ''
-            const tags = (idxTags >= 0 ? cols[idxTags] : cols[4]) ?? ''
-            const is_active = (idxActive >= 0 ? cols[idxActive] : cols[5]) ?? '1'
-
-            const activeStr = String(is_active ?? '').trim().toLowerCase()
-            const activeVal = activeStr === '0' || activeStr === 'false' || activeStr === 'no' ? '0' : '1'
-
-            return {
-              ...newIngredientRow(),
-              name,
-              category_id: String(category_id || fallbackCategoryId),
-              unit: String(unit || 'kg').trim() || 'kg',
-              base_price: String(base_price ?? '').trim(),
-              tags: String(tags ?? '').trim(),
-              is_active: activeVal,
-            }
-          })
-          .filter(Boolean)
-
-        if (!mapped.length) return prev
+        const mappedWithFb = mapped.map((row) => ({
+          ...row,
+          category_id: String(row.category_id || fb),
+        }))
 
         const next = [...prev]
         const targetIndex = Math.min(Math.max(0, Number(rowIndex) || 0), Math.max(0, next.length - 1))
 
-        // Fill the current row with the first mapped row, then insert the rest below.
-        const first = mapped[0]
+        const first = mappedWithFb[0]
         next[targetIndex] = { ...next[targetIndex], ...first, id: next[targetIndex].id }
 
-        const rest = mapped.slice(1)
+        const rest = mappedWithFb.slice(1)
         if (rest.length) next.splice(targetIndex + 1, 0, ...rest)
 
-        // Save snapshot for Ctrl+Z undo (bulk paste).
         setUndoStack((h) => [...h, prev])
         return next
       })
+
+      const n = mapped.length
+      const label = n === 1 ? 'ingredient' : 'ingredients'
+      showToast({
+        text: `${n} ${label} in the list to add — review and save when ready.`,
+        theme: 'success',
+        duration: 10000,
+      })
     },
-    [categoryOptions],
+    [categoryOptions, showToast],
   )
 
   const columns = useMemo(
@@ -273,7 +293,7 @@ function InventoryIngredientCreateInnerPage() {
         thClassName: 'w-24',
       },
     ],
-    [categoryOptions],
+    [addRowsFromDelimitedText, categoryOptions],
   )
 
   const canSave = useMemo(() => {
