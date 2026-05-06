@@ -7,6 +7,7 @@ import { HomePage } from './pages/home/HomePage.jsx'
 import { InventoryCategoriesPage } from './pages/inventory/InventoryCategoriesPage.jsx'
 import { InventoryIngredientsPage } from './pages/inventory/ingredient/InventoryIngredientsPage.jsx'
 import { InventoryIngredientCreatePage } from './pages/inventory/ingredient/InventoryIngredientCreatePage.jsx'
+import { InventoryIngredientBulkEditPage } from './pages/inventory/ingredient/InventoryIngredientBulkEditPage.jsx'
 import { InventoryPreparationsPage } from './pages/inventory/preparation/InventoryPreparationsPage.jsx'
 import { InventoryPreparationCreatePage } from './pages/inventory/preparation/InventoryPreparationCreatePage.jsx'
 import { PurchasesCreatePage } from './pages/purchases/PurchasesCreatePage.jsx'
@@ -30,6 +31,7 @@ const ROUTE_META = /** @type {const} */ ({
   '/inventory/categories': { title: 'Inventory • Categories', crumbs: ['Inventory', 'Categories'] },
   '/inventory/ingredients': { title: 'Inventory • Ingredients', crumbs: ['Inventory', 'Ingredients'] },
   '/inventory/ingredients/create': { title: 'Inventory • Ingredients • Create', crumbs: ['Inventory', 'Ingredients', 'Create'] },
+  '/inventory/ingredients/edit': { title: 'Inventory • Ingredients • Edit', crumbs: ['Inventory', 'Ingredients', 'Edit'] },
   '/inventory/preparations': { title: 'Inventory • Preparations', crumbs: ['Inventory', 'Preparations'] },
   '/inventory/preparations/create': { title: 'Inventory • Preparations • Create', crumbs: ['Inventory', 'Preparations', 'Create'] },
   '/purchases/create': { title: 'Purchases • Create', crumbs: ['Purchases', 'Create'] },
@@ -119,6 +121,14 @@ function AppShell() {
               element={
                 <RequireAuth>
                   <InventoryIngredientCreatePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/inventory/ingredients/edit"
+              element={
+                <RequireAuth>
+                  <InventoryIngredientBulkEditPage />
                 </RequireAuth>
               }
             />

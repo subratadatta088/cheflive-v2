@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Breadcrumb } from '../../../components/Breadcrumb.jsx'
 import { Button } from '../../../components/Button.jsx'
 import { DataTable } from '../../../components/DataTable.jsx'
-import { Download, Info, PlusCircle, Trash2 } from 'lucide-react'
+import { Download, FilePenLine, Info, PlusCircle, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   deleteIngredientById,
@@ -12,6 +12,8 @@ import {
 } from '../../../apis/ingredient.js'
 import { DateTime } from '../../../components/DateTime.jsx'
 import { ConfirmModal } from '../../../components/ConfirmModal.jsx'
+import { CategoriesProvider, useCategories } from '../../../context/CategoriesContext.jsx'
+import { MultiSelect } from '../../../components/MultiSelect.jsx'
 
 function csvEscape(cell) {
   const s = cell === null || cell === undefined ? '' : String(cell)
@@ -50,8 +52,23 @@ function ingredientsToCsv(rows) {
   return lines.join('\r\n')
 }
 
-export function InventoryIngredientsPage() {
+function normalizeSelectedIds(selectedRowIds) {
+  const seen = new Set()
+  const out = []
+  for (const raw of selectedRowIds) {
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) continue
+    if (seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+  }
+  out.sort((a, b) => a - b)
+  return out
+}
+
+function InventoryIngredientsInnerPage() {
   const navigate = useNavigate()
+  const { options: categoryOptions } = useCategories()
 
   const [rows, setRows] = useState(() => [])
   const [loading, setLoading] = useState(false)
@@ -60,6 +77,7 @@ export function InventoryIngredientsPage() {
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => /** @type {string[]} */ ([]))
   const [openMenuForId, setOpenMenuForId] = useState(null)
   const [editRow, setEditRow] = useState(null)
   const [editForm, setEditForm] = useState(() => ({ name: '', unit: '', base_price: '' }))
@@ -144,7 +162,13 @@ export function InventoryIngredientsPage() {
     setError('')
     setLoading(true)
     try {
-      const data = await listIngredients({ page, limit: pageSize, q: search.trim() || undefined })
+      const category_ids = selectedCategoryIds.length ? selectedCategoryIds.join(',') : undefined
+      const data = await listIngredients({
+        page,
+        limit: pageSize,
+        q: search.trim() || undefined,
+        category_ids,
+      })
       const items = Array.isArray(data?.items) ? data.items : []
       setRows(items)
       const nextTotal =
@@ -176,7 +200,7 @@ export function InventoryIngredientsPage() {
     return () => {
       alive = false
     }
-  }, [page, pageSize, search])
+  }, [page, pageSize, search, selectedCategoryIds.join(',')])
 
   useEffect(() => {
     if (selectedRowIds.length === 0 && bulkDeleteOpen) setBulkDeleteOpen(false)
@@ -198,14 +222,7 @@ export function InventoryIngredientsPage() {
     setError('')
     setExportingCsv(true)
     try {
-      const seen = new Set()
-      const ids = []
-      for (const raw of selectedRowIds) {
-        const n = Number(raw)
-        if (!Number.isFinite(n) || seen.has(n)) continue
-        seen.add(n)
-        ids.push(n)
-      }
+      const ids = normalizeSelectedIds(selectedRowIds)
       if (ids.length === 0) return
 
       const loaded = await Promise.all(
@@ -261,6 +278,17 @@ export function InventoryIngredientsPage() {
                   {selectedRowIds.length} selected
                 </span>
               </span>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const ids = normalizeSelectedIds(selectedRowIds)
+                  if (ids.length === 0) return
+                  navigate(`/inventory/ingredients/edit?ids=${encodeURIComponent(ids.join(','))}`)
+                }}
+              >
+                <FilePenLine className="h-4 w-4" aria-hidden="true" />
+                Edit
+              </Button>
               <Button variant="danger" onClick={() => setBulkDeleteOpen(true)}>
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                 Delete
@@ -298,6 +326,19 @@ export function InventoryIngredientsPage() {
         onSearchChange={setSearch}
         searchPlaceholder="Search ingredients…"
         emptyText={loading ? 'Loading…' : 'No ingredients found'}
+        renderFilters={() => (
+          <div className="w-full sm:w-[320px]">
+            <MultiSelect
+              options={categoryOptions}
+              value={selectedCategoryIds}
+              onChange={(next) => {
+                setSelectedCategoryIds(next)
+                setPage(1)
+              }}
+              placeholder="Filter categories…"
+            />
+          </div>
+        )}
         rowSelection={{
           selectedIds: selectedRowIds,
           onChange: setSelectedRowIds,
@@ -434,6 +475,14 @@ export function InventoryIngredientsPage() {
         }}
       />
     </section>
+  )
+}
+
+export function InventoryIngredientsPage() {
+  return (
+    <CategoriesProvider>
+      <InventoryIngredientsInnerPage />
+    </CategoriesProvider>
   )
 }
 

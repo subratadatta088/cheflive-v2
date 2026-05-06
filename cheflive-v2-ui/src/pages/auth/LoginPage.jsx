@@ -88,7 +88,7 @@ export function LoginPage() {
     </div>
       <section className="relative mx-auto flex min-h-[calc(100vh-2rem)] max-w-xl items-center justify-center overflow-hidden px-4 py-12 sm:px-6">
         <form
-          className="w-full space-y-10 rounded-2xl border border-slate-200/70 bg-white/75 p-8 shadow-sm backdrop-blur-md sm:p-10"
+          className="w-full space-y-10 rounded-2xl  sm:p-10"
           onSubmit={formik.handleSubmit}
         >
           <div className="flex flex-col items-center gap-3 p-6">

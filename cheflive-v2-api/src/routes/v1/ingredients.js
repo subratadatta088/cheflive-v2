@@ -9,6 +9,7 @@ router.use(requireAuth, withScopedModels)
 
 router.post('/bulk-upload', ingredientsController.bulkUploadIngredients)
 router.post('/bulk', ingredientsController.bulkCreateIngredients)
+router.put('/bulk', ingredientsController.bulkUpdateIngredients)
 router.post('/', ingredientsController.createIngredient)
 router.get('/', ingredientsController.listIngredients)
 router.get('/:id', ingredientsController.getIngredientById)

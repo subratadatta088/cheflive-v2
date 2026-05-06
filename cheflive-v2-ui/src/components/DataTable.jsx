@@ -34,6 +34,17 @@ import { Search } from 'lucide-react'
  *   initialDateFrom?: string,
  *   initialDateTo?: string,
  *   onDateRangeChange?: (range: { from: string, to: string }) => void,
+ *   renderFilters?: (ctx: {
+ *     manualPagination: boolean,
+ *     search: string,
+ *     setSearch: (value: string) => void,
+ *     page: number,
+ *     setPage: (page: number) => void,
+ *     dateFrom: string,
+ *     dateTo: string,
+ *     setDateFrom: (value: string) => void,
+ *     setDateTo: (value: string) => void,
+ *   }) => React.ReactNode,
  *   emptyText?: string,
  *   className?: string,
  *   rowSelection?: { selectedIds: number[], onChange: (ids: number[]) => void, getRowId?: (row: T) => number },
@@ -59,6 +70,7 @@ export function DataTable({
   initialDateFrom = '',
   initialDateTo = '',
   onDateRangeChange,
+  renderFilters,
   emptyText = 'No results',
   className = '',
   rowSelection = null,
@@ -123,6 +135,34 @@ export function DataTable({
 
   const colCount = safeColumns.length + (rowSelection ? 1 : 0)
 
+  const setPage = (nextPage) => {
+    if (manualPagination) onPageChange?.(nextPage)
+    else setPageState(nextPage)
+  }
+
+  const setSearch = (value) => {
+    if (manualPagination) {
+      onSearchChange?.(value)
+      onPageChange?.(1)
+    } else {
+      setSearchState(value)
+      onSearchChange?.(value)
+      setPageState(1)
+    }
+  }
+
+  const setDateFromValue = (value) => {
+    setDateFrom(value)
+    onDateRangeChange?.({ from: value, to: dateTo })
+    setPage(1)
+  }
+
+  const setDateToValue = (value) => {
+    setDateTo(value)
+    onDateRangeChange?.({ from: dateFrom, to: value })
+    setPage(1)
+  }
+
   return (
     <section className={`w-full ${className}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -152,14 +192,24 @@ export function DataTable({
         </div>
 
         <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          {typeof renderFilters === 'function'
+            ? renderFilters({
+                manualPagination,
+                search,
+                setSearch,
+                page: safePage,
+                setPage,
+                dateFrom,
+                dateTo,
+                setDateFrom: setDateFromValue,
+                setDateTo: setDateToValue,
+              })
+            : null}
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => {
-              const v = e.target.value
-              setDateFrom(v)
-              onDateRangeChange?.({ from: v, to: dateTo })
-              setPage(1)
+              setDateFromValue(e.target.value)
             }}
             className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
             aria-label="From date"
@@ -168,10 +218,7 @@ export function DataTable({
             type="date"
             value={dateTo}
             onChange={(e) => {
-              const v = e.target.value
-              setDateTo(v)
-              onDateRangeChange?.({ from: dateFrom, to: v })
-              setPage(1)
+              setDateToValue(e.target.value)
             }}
             className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
             aria-label="To date"
@@ -182,15 +229,7 @@ export function DataTable({
           <input
             value={search}
             onChange={(e) => {
-              const v = e.target.value
-              if (manualPagination) {
-                onSearchChange?.(v)
-                onPageChange?.(1)
-              } else {
-                setSearchState(v)
-                onSearchChange?.(v)
-                setPageState(1)
-              }
+              setSearch(e.target.value)
             }}
             placeholder={searchPlaceholder}
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"

@@ -42,6 +42,30 @@ const IngredientListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   q: z.string().min(1).optional(),
+  category_ids: z
+    .preprocess((v) => {
+      if (v === undefined || v === null || v === '') return undefined
+      const parts = Array.isArray(v) ? v : [v]
+      const flat = parts
+        .flatMap((x) => String(x ?? '').split(','))
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (!flat.length) return undefined
+      return flat
+    }, z.array(z.coerce.number().int().positive()).nonempty())
+    .optional(),
+  ids: z
+    .preprocess((v) => {
+      if (v === undefined || v === null || v === '') return undefined
+      const parts = Array.isArray(v) ? v : [v]
+      const flat = parts
+        .flatMap((x) => String(x ?? '').split(','))
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (!flat.length) return undefined
+      return flat
+    }, z.array(z.coerce.number().int().positive()).nonempty())
+    .optional(),
   is_active: z
     .union([z.literal('0'), z.literal('1'), z.literal(0), z.literal(1), z.boolean()])
     .optional(),

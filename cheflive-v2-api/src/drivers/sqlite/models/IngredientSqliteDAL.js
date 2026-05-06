@@ -194,6 +194,62 @@ class IngredientSqliteDAL extends IngredientModel {
     }
   }
 
+  /**
+   * Transaction-based bulk update with per-row savepoints so failures don't rollback the whole batch.
+   * @param {Array<{ id: number, name?: string|null, data: unknown }>} items
+   * @returns {Promise<{ updated: number, failures: { id: number|null, name: string|null, error: string }[] }>}
+   */
+  async bulkUpdate(items) {
+    const inputs = Array.isArray(items) ? items : []
+    if (!inputs.length) return { updated: 0, failures: [] }
+
+    let updated = 0
+    /** @type {{ id: number|null, name: string|null, error: string }[]} */
+    const failures = []
+
+    await exec(this.db, 'BEGIN')
+    try {
+      for (let i = 0; i < inputs.length; i++) {
+        const raw = inputs[i] || {}
+        const id = Number(raw?.id)
+        if (!Number.isFinite(id)) {
+          failures.push({ id: null, name: String(raw?.name ?? '').trim() || null, error: 'Invalid id' })
+          continue
+        }
+
+        const sp = `sp_ing_up_${i}`
+        await exec(this.db, `SAVEPOINT ${sp}`)
+        try {
+          await this.updateById(id, raw?.data ?? {})
+          await exec(this.db, `RELEASE ${sp}`)
+          updated++
+        } catch (e) {
+          try {
+            await exec(this.db, `ROLLBACK TO ${sp}`)
+            await exec(this.db, `RELEASE ${sp}`)
+          } catch {
+            // ignore
+          }
+          failures.push({
+            id,
+            name: String(raw?.name ?? '').trim() || null,
+            error: String(e?.message || 'Update failed'),
+          })
+        }
+      }
+
+      await exec(this.db, 'COMMIT')
+      return { updated, failures }
+    } catch (e) {
+      try {
+        await exec(this.db, 'ROLLBACK')
+      } catch {
+        // ignore
+      }
+      throw e
+    }
+  }
+
   async getById(id) {
     const ingredientId = IngredientIdSchema.parse(id)
     const row = await get(
@@ -225,7 +281,7 @@ class IngredientSqliteDAL extends IngredientModel {
     return rows.map(normalizeIngredientRow)
   }
 
-  async list({ organization_id, page, limit, q, is_active }) {
+  async list({ organization_id, page, limit, q, is_active, category_ids, ids }) {
     const offset = (page - 1) * limit
 
     const baseWhere = [
@@ -237,6 +293,24 @@ class IngredientSqliteDAL extends IngredientModel {
     if (q) {
       baseWhere.push('i.name LIKE ?')
       baseParams.push(`%${q}%`)
+    }
+
+    if (Array.isArray(category_ids) && category_ids.length) {
+      const unique = Array.from(new Set(category_ids.map((n) => Number(n)).filter((n) => Number.isFinite(n))))
+      if (unique.length) {
+        const placeholders = unique.map(() => '?').join(', ')
+        baseWhere.push(`i.category_id IN (${placeholders})`)
+        baseParams.push(...unique)
+      }
+    }
+
+    if (Array.isArray(ids) && ids.length) {
+      const unique = Array.from(new Set(ids.map((n) => Number(n)).filter((n) => Number.isFinite(n))))
+      if (unique.length) {
+        const placeholders = unique.map(() => '?').join(', ')
+        baseWhere.push(`i.id IN (${placeholders})`)
+        baseParams.push(...unique)
+      }
     }
 
     if (is_active !== undefined) {

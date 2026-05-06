@@ -1,4 +1,5 @@
 const { parse } = require('csv-parse/sync')
+const { z } = require('zod')
 
 const {
   IngredientCreateSchema,
@@ -11,6 +12,7 @@ class IngredientsController {
   constructor() {
     this.bulkUploadIngredients = this.bulkUploadIngredients.bind(this)
     this.bulkCreateIngredients = this.bulkCreateIngredients.bind(this)
+    this.bulkUpdateIngredients = this.bulkUpdateIngredients.bind(this)
     this.createIngredient = this.createIngredient.bind(this)
     this.listIngredients = this.listIngredients.bind(this)
     this.getIngredientById = this.getIngredientById.bind(this)
@@ -212,6 +214,138 @@ class IngredientsController {
     return res.json({
       total: normalizedInputs.length,
       created: bulkResult.created || 0,
+      failed: mergedFailures.length,
+      failures: mergedFailures,
+    })
+  }
+
+  /**
+   * PUT /ingredients/bulk
+   * Body: { items: IngredientBulkUpdate[] } | IngredientBulkUpdate[]
+   *
+   * Applies partial updates to multiple ingredients (per row), commits successful rows, and reports failures.
+   */
+  async bulkUpdateIngredients(req, res) {
+    const raw = req.body
+    const items = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : null
+    if (!items) return res.status(400).json({ error: 'items array is required' })
+
+    const BulkUpdateRowSchema = z
+      .object({
+        id: z.coerce.number().int().positive(),
+      })
+      .merge(IngredientUpdateSchema)
+
+    const failures = []
+    const valid = []
+
+    const categoryCache = new Map()
+    const ingredientCache = new Map()
+
+    for (let i = 0; i < items.length; i++) {
+      const input = items[i] || {}
+
+      const parsed = BulkUpdateRowSchema.safeParse(input)
+      if (!parsed.success) {
+        failures.push({
+          row: i + 1,
+          id: Number(input?.id) || null,
+          name: String(input?.name ?? '').trim() || null,
+          error: 'Invalid payload',
+        })
+        continue
+      }
+
+      const id = parsed.data.id
+
+      let existing = ingredientCache.get(id)
+      if (existing === undefined) {
+        existing = await req.models.ingredient.getById(id)
+        ingredientCache.set(id, existing || null)
+      }
+
+      if (!existing) {
+        failures.push({
+          row: i + 1,
+          id,
+          name: String(parsed.data?.name ?? '').trim() || null,
+          error: 'Not found',
+        })
+        continue
+      }
+
+      if (existing.organization_id !== req.user.organization_id) {
+        failures.push({
+          row: i + 1,
+          id,
+          name: String(parsed.data?.name ?? existing?.name ?? '').trim() || null,
+          error: 'Ingredient organization mismatch',
+        })
+        continue
+      }
+
+      const updateData = { ...parsed.data }
+      delete updateData.id
+
+      if (!Object.keys(updateData).length) {
+        failures.push({
+          row: i + 1,
+          id,
+          name: String(existing?.name ?? '').trim() || null,
+          error: 'No fields to update',
+        })
+        continue
+      }
+
+      if (updateData.category_id !== undefined) {
+        const catId = updateData.category_id
+        if (!categoryCache.has(catId)) {
+          const cat = await req.models.category.getById(catId)
+          const ok = Boolean(cat && cat.organization_id === req.user.organization_id)
+          categoryCache.set(catId, ok)
+          if (!ok) {
+            failures.push({
+              row: i + 1,
+              id,
+              name: String(updateData?.name ?? existing?.name ?? '').trim() || null,
+              error: 'Invalid category_id',
+            })
+            continue
+          }
+        } else if (!categoryCache.get(catId)) {
+          failures.push({
+            row: i + 1,
+            id,
+            name: String(updateData?.name ?? existing?.name ?? '').trim() || null,
+            error: 'Invalid category_id',
+          })
+          continue
+        }
+      }
+
+      valid.push({
+        row: i + 1,
+        id,
+        name: String(updateData?.name ?? existing?.name ?? '').trim() || null,
+        data: updateData,
+      })
+    }
+
+    const bulkResult = await req.models.ingredient.bulkUpdate(valid.map((v) => ({ id: v.id, name: v.name, data: v.data })))
+
+    const mergedFailures = [
+      ...failures,
+      ...(bulkResult.failures || []).map((f) => ({
+        row: null,
+        id: f.id ?? null,
+        name: f.name ?? null,
+        error: f.error ?? 'Failed',
+      })),
+    ]
+
+    return res.json({
+      total: items.length,
+      updated: bulkResult.updated || 0,
       failed: mergedFailures.length,
       failures: mergedFailures,
     })

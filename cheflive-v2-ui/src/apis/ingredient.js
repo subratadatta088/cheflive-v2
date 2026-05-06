@@ -20,7 +20,29 @@ export async function bulkCreateIngredients(payload) {
 
 /**
  * GET /ingredients
- * @param {{ q?: string, page?: number, limit?: number, is_active?: 0|1|boolean|'0'|'1' }} [query]
+ * Fetch many ingredients by ids (query param).
+ * @param {number[]} ids
+ */
+export async function getIngredientsBulkByIds(ids) {
+  const list = Array.isArray(ids) ? ids : []
+  const res = await api.get('ingredients', { params: { ids: list.join(',') } })
+  return res.data
+}
+
+/**
+ * PUT /ingredients/bulk
+ * Bulk update ingredients.
+ * NOTE: Backend endpoint will be defined next.
+ * @param {{ items: Array<{ id: number, category_id?: number, name?: string, unit?: string, base_price?: number|null, tags?: string[]|null, is_active?: boolean, __row?: number }> }} payload
+ */
+export async function bulkUpdateIngredients(payload) {
+  const res = await api.put('ingredients/bulk', payload)
+  return res.data
+}
+
+/**
+ * GET /ingredients
+ * @param {{ q?: string, page?: number, limit?: number, is_active?: 0|1|boolean|'0'|'1', ids?: number[]|string, category_ids?: number[]|string }} [query]
  */
 export async function listIngredients(query = {}) {
   const res = await api.get('ingredients', { params: query })

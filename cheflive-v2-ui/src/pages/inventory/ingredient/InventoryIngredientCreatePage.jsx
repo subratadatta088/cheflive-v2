@@ -11,13 +11,11 @@ import { bulkCreateIngredients } from '../../../apis/ingredient.js'
 import { useToast } from '../../../components/Toaster.jsx'
 import { CategoriesProvider, useCategories } from '../../../context/CategoriesContext.jsx'
 
-const UNIT_OPTIONS = [
-  { value: 'kg', label: 'kg' },
-  { value: 'g', label: 'g' },
-  { value: 'L', label: 'L' },
-  { value: 'ml', label: 'ml' },
-  { value: 'pcs', label: 'pcs' },
-]
+function normalizeUnitInput(v) {
+  return String(v ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
 
 function looksLikeBulkDelimitedText(text) {
   const t = String(text ?? '')
@@ -185,7 +183,7 @@ function InventoryIngredientCreateInnerPage() {
             ...newIngredientRow(),
             name,
             category_id: String(category_id || fallbackCategoryId),
-            unit: String(unit || 'kg').trim() || 'kg',
+            unit: normalizeUnitInput(String(unit || 'kg').trim() || 'kg') || 'kg',
             base_price: String(base_price ?? '').trim(),
             tags: String(tags ?? '').trim(),
             is_active: activeVal,
@@ -265,7 +263,26 @@ function InventoryIngredientCreateInnerPage() {
         ),
       },
       { key: 'category_id', header: 'Category', kind: 'select', options: categoryOptions, thClassName: 'w-40' },
-      { key: 'unit', header: 'Unit', kind: 'select', options: UNIT_OPTIONS, thClassName: 'w-28' },
+      {
+        key: 'unit',
+        header: 'Unit',
+        kind: 'custom',
+        placeholder: 'e.g. kg',
+        thClassName: 'w-28',
+        align: 'left',
+        render: ({ row, updateCell }) => (
+          <input
+            value={String(row?.unit ?? '')}
+            onChange={(e) => updateCell('unit', normalizeUnitInput(e.target.value))}
+            onBlur={(e) => updateCell('unit', normalizeUnitInput(e.target.value))}
+            inputMode="text"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="e.g. kg"
+            className="box-border h-9 w-full min-w-[72px] border-0 bg-transparent px-2 py-1 text-sm tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
+          />
+        ),
+      },
       {
         key: 'base_price',
         header: 'Base price',
@@ -308,7 +325,7 @@ function InventoryIngredientCreateInnerPage() {
   return (
     <section className="flex  flex-col gap-4 ">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Breadcrumb items={[{ label: 'Inventory' }, { label: 'Ingredients' }, { label: 'Create' }]} />
+        <Breadcrumb items={[{ label: 'Inventory' }, { label: 'Ingredients', href: '/inventory/ingredients' }, { label: 'Create' }]} />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" type="button" onClick={() => setAddCategoryOpen(true)}>
             <PlusCircle className="h-4 w-4" aria-hidden="true" />
@@ -374,7 +391,7 @@ function InventoryIngredientCreateInnerPage() {
                   .map((r, idx) => {
                     const name = String(r.name ?? '').trim()
                     const category_id = Number(r.category_id)
-                    const unit = String(r.unit ?? '').trim() || 'kg'
+                    const unit = normalizeUnitInput(String(r.unit ?? '').trim() || 'kg') || 'kg'
                     const base_price_raw = String(r.base_price ?? '').trim()
                     const tags_raw = String(r.tags ?? '').trim()
                     const is_active = String(r.is_active ?? '1') === '1'
