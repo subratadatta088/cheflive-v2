@@ -14,6 +14,7 @@ import { DateTime } from '../../../components/DateTime.jsx'
 import { ConfirmModal } from '../../../components/ConfirmModal.jsx'
 import { CategoriesProvider, useCategories } from '../../../context/CategoriesContext.jsx'
 import { MultiSelect } from '../../../components/MultiSelect.jsx'
+import { Switch } from '../../../components/Switch.jsx'
 
 function csvEscape(cell) {
   const s = cell === null || cell === undefined ? '' : String(cell)
@@ -85,12 +86,50 @@ function InventoryIngredientsInnerPage() {
   const [selectedRowIds, setSelectedRowIds] = useState(() => [])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [exportingCsv, setExportingCsv] = useState(false)
+  const [activeSavingIds, setActiveSavingIds] = useState(() => /** @type {number[]} */ ([]))
 
   const columns = useMemo(
     () => [
     { key: 'name', header: 'Ingredient' },
     { key: 'category_name', header: 'Category' },
     { key: 'unit', header: 'Unit', className: 'w-[90px]' },
+    {
+      key: 'is_active',
+      header: 'Active',
+      className: 'w-[90px]',
+      cellClassName: 'text-center',
+      render: (r) => {
+        const id = Number(r?.id)
+        const checked = r?.is_active === true || r?.is_active === 1 || String(r?.is_active) === '1'
+        const saving = Number.isFinite(id) && activeSavingIds.includes(id)
+        return (
+          <div className="flex items-center justify-center">
+            <Switch
+              checked={checked}
+              disabled={!Number.isFinite(id) || saving}
+              aria-label={`Set ${String(r?.name ?? 'ingredient')} active`}
+              onChange={async (next) => {
+                if (!Number.isFinite(id)) return
+                setError('')
+
+                // Optimistic UI
+                setRows((prev) => prev.map((x) => (Number(x?.id) === id ? { ...x, is_active: next ? 1 : 0 } : x)))
+                setActiveSavingIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+                try {
+                  await updateIngredientById(id, { is_active: Boolean(next) })
+                } catch (e) {
+                  // Rollback on error
+                  setRows((prev) => prev.map((x) => (Number(x?.id) === id ? { ...x, is_active: checked ? 1 : 0 } : x)))
+                  setError(e?.response?.data?.message || e?.message || 'Failed to update active status')
+                } finally {
+                  setActiveSavingIds((prev) => prev.filter((x) => x !== id))
+                }
+              }}
+            />
+          </div>
+        )
+      },
+    },
     {
       key: 'base_price',
       header: 'Base price',
@@ -155,7 +194,7 @@ function InventoryIngredientsInnerPage() {
       },
     },
   ],
-    [openMenuForId],
+    [openMenuForId, activeSavingIds],
   )
 
   async function reload() {

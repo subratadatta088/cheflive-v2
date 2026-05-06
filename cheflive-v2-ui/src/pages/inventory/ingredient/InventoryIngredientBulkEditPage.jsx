@@ -7,6 +7,8 @@ import { X } from 'lucide-react'
 import { CategoriesProvider, useCategories } from '../../../context/CategoriesContext.jsx'
 import { bulkUpdateIngredients, getIngredientsBulkByIds } from '../../../apis/ingredient.js'
 import { useToast } from '../../../components/Toaster.jsx'
+import { Switch } from '../../../components/Switch.jsx'
+import { BackButton } from '../../../components/BackButton.jsx'
 
 function normalizeUnitInput(v) {
   return String(v ?? '')
@@ -113,12 +115,17 @@ function InventoryIngredientBulkEditInnerPage() {
       {
         key: 'is_active',
         header: 'Active',
-        kind: 'select',
-        options: [
-          { value: '1', label: 'Yes' },
-          { value: '0', label: 'No' },
-        ],
+        kind: 'custom',
         thClassName: 'w-24',
+        align: 'center',
+        render: ({ row, updateCell }) => {
+          const checked = String(row?.is_active ?? '1') === '1'
+          return (
+            <div className="flex items-center justify-center px-2">
+              <Switch checked={checked} onChange={(v) => updateCell('is_active', v ? '1' : '0')} aria-label="Set active" />
+            </div>
+          )
+        },
       },
       {
         key: '_remove',
@@ -187,9 +194,7 @@ function InventoryIngredientBulkEditInnerPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Breadcrumb items={[{ label: 'Inventory' }, { label: 'Ingredients' }, { label: 'Edit' }]} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" type="button" onClick={() => navigate('/inventory/ingredients')}>
-            Back
-          </Button>
+          <BackButton to="/inventory/ingredients" />
           <Button variant="secondary" type="button" disabled={loading || saving} onClick={() => void load()}>
             {loading ? 'Loading…' : 'Reload'}
           </Button>
