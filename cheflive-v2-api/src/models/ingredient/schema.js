@@ -3,10 +3,12 @@ const { z } = require('zod')
 const IngredientIdSchema = z.number().int().positive()
 const OrganizationIdSchema = z.number().int().positive()
 const CategoryIdSchema = z.number().int().positive()
+const ItemCodeSchema = z.coerce.number().int().positive()
 
 const IngredientCreateSchema = z.object({
   organization_id: OrganizationIdSchema,
   category_id: CategoryIdSchema,
+  item_code: ItemCodeSchema.optional(),
   name: z.string().min(1),
   unit: z.string().min(1),
   base_price: z.number().finite().optional(),
@@ -16,6 +18,7 @@ const IngredientCreateSchema = z.object({
 
 const IngredientUpdateSchema = z.object({
   category_id: CategoryIdSchema.optional(),
+  item_code: ItemCodeSchema.nullable().optional(),
   name: z.string().min(1).optional(),
   unit: z.string().min(1).optional(),
   base_price: z.number().finite().nullable().optional(),
@@ -28,6 +31,7 @@ const IngredientRowSchema = z.object({
   organization_id: OrganizationIdSchema,
   category_id: CategoryIdSchema,
   category_name: z.string().optional().nullable(),
+  item_code: z.number().int().positive().optional().nullable(),
   name: z.string(),
   unit: z.string(),
   base_price: z.number().nullable().optional(),

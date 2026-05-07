@@ -188,7 +188,6 @@ export function DataTable({
               </option>
             ))}
           </select>
-          <div className="text-sm text-slate-600">items</div>
         </div>
 
         <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">

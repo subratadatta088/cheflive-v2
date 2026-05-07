@@ -98,11 +98,12 @@ class IngredientSqliteDAL extends IngredientModel {
 
     const result = await run(
       this.db,
-      `INSERT INTO ingredients (organization_id, category_id, name, unit, base_price, tags, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ingredients (organization_id, category_id, item_code, name, unit, base_price, tags, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payload.organization_id,
         payload.category_id,
+        payload.item_code ?? null,
         payload.name,
         payload.unit,
         payload.base_price ?? null,
@@ -150,11 +151,12 @@ class IngredientSqliteDAL extends IngredientModel {
 
           await run(
             this.db,
-            `INSERT INTO ingredients (organization_id, category_id, name, unit, base_price, tags, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO ingredients (organization_id, category_id, item_code, name, unit, base_price, tags, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               payload.organization_id,
               payload.category_id,
+              payload.item_code ?? null,
               payload.name,
               payload.unit,
               payload.base_price ?? null,
@@ -291,8 +293,11 @@ class IngredientSqliteDAL extends IngredientModel {
     const baseParams = [organization_id]
 
     if (q) {
-      baseWhere.push('i.name LIKE ?')
-      baseParams.push(`%${q}%`)
+      const qStr = String(q ?? '').trim()
+      const qLike = `%${qStr}%`
+      // Match by name OR item_code (barcode)
+      baseWhere.push('(i.name LIKE ? OR CAST(i.item_code AS TEXT) LIKE ?)')
+      baseParams.push(qLike, qLike)
     }
 
     if (Array.isArray(category_ids) && category_ids.length) {
@@ -385,6 +390,10 @@ class IngredientSqliteDAL extends IngredientModel {
     const fields = []
     const params = []
 
+    if (payload.item_code !== undefined) {
+      fields.push('item_code = ?')
+      params.push(payload.item_code)
+    }
     if (payload.category_id !== undefined) {
       fields.push('category_id = ?')
       params.push(payload.category_id)
@@ -431,6 +440,24 @@ class IngredientSqliteDAL extends IngredientModel {
       [now, now, ingredientId]
     )
     return true
+  }
+
+  async getByItemCode({ organization_id, item_code }) {
+    const orgId = Number(organization_id)
+    const code = Number(item_code)
+    if (!Number.isFinite(orgId) || !Number.isFinite(code)) return null
+
+    const row = await get(
+      this.db,
+      `SELECT id
+       FROM ingredients
+       WHERE organization_id = ?
+         AND item_code = ?
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [orgId, code],
+    )
+    if (!row?.id) return null
+    return await this.getById(row.id)
   }
 }
 

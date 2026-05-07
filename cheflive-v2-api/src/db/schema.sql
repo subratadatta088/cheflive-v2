@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS ingredients (
 
   category_id INTEGER NOT NULL,
 
+  item_code INTEGER, -- barcode (optional, numeric)
+
   name TEXT NOT NULL,
   unit TEXT NOT NULL,
 
@@ -379,6 +381,9 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles (role_id);
 CREATE INDEX IF NOT EXISTS idx_ingredients_org ON ingredients (organization_id);
 CREATE INDEX IF NOT EXISTS idx_ingredients_org_created_by ON ingredients (organization_id, created_by);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ingredients_org_item_code
+  ON ingredients (organization_id, item_code)
+  WHERE item_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ingredient_tags_org ON ingredient_tags (organization_id);
 CREATE INDEX IF NOT EXISTS idx_ingredient_tags_org_created_by ON ingredient_tags (organization_id, created_by);
 CREATE INDEX IF NOT EXISTS idx_preparations_org ON preparations (organization_id);

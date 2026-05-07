@@ -2,7 +2,7 @@ import { api } from './api.js'
 
 /**
  * POST /ingredients
- * @param {{ category_id: number|string, name: string, unit: string, base_price?: number, tags?: string[], is_active?: boolean }} payload
+ * @param {{ category_id: number|string, item_code?: number|null, name: string, unit: string, base_price?: number, tags?: string[], is_active?: boolean }} payload
  */
 export async function createIngredient(payload) {
   const res = await api.post('ingredients', payload)
@@ -11,7 +11,7 @@ export async function createIngredient(payload) {
 
 /**
  * POST /ingredients/bulk
- * @param {Array<{ category_id: number|string, name: string, unit: string, base_price?: number, tags?: string[], is_active?: boolean, __row?: number }>|{ items: any[] }} payload
+ * @param {Array<{ category_id: number|string, item_code?: number|null, name: string, unit: string, base_price?: number, tags?: string[], is_active?: boolean, __row?: number }>|{ items: any[] }} payload
  */
 export async function bulkCreateIngredients(payload) {
   const res = await api.post('ingredients/bulk', payload)
@@ -32,8 +32,7 @@ export async function getIngredientsBulkByIds(ids) {
 /**
  * PUT /ingredients/bulk
  * Bulk update ingredients.
- * NOTE: Backend endpoint will be defined next.
- * @param {{ items: Array<{ id: number, category_id?: number, name?: string, unit?: string, base_price?: number|null, tags?: string[]|null, is_active?: boolean, __row?: number }> }} payload
+ * @param {{ items: Array<{ id: number, category_id?: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null, tags?: string[]|null, is_active?: boolean, __row?: number }> }} payload
  */
 export async function bulkUpdateIngredients(payload) {
   const res = await api.put('ingredients/bulk', payload)
@@ -62,7 +61,30 @@ export async function getIngredientById(id) {
   return res.data
 }
 
-/** PATCH /ingredients/:id @param {number|string} id @param {{ category_id?: number, name?: string, unit?: string, base_price?: number|null, tags?: string[]|null, is_active?: boolean }} payload */
+/** GET /ingredients/by-item-code/:item_code @param {number|string} item_code */
+export async function getIngredientByItemCode(item_code) {
+  const res = await api.get(`ingredients/by-item-code/${encodeURIComponent(item_code)}`)
+  return res.data
+}
+
+/** GET /ingredients/:id/unit-conversions @param {number|string} id */
+export async function listIngredientUnitConversions(id) {
+  const res = await api.get(`ingredients/${id}/unit-conversions`)
+  return res.data
+}
+
+/**
+ * PUT /ingredients/:id/unit-conversions (upsert)
+ * @param {number|string} id
+ * @param {{ items: Array<{ id?: number, from_unit?: string, to_unit?: string, factor?: number }> }|Array<any>} payload
+ */
+export async function upsertIngredientUnitConversions(id, payload) {
+  const body = Array.isArray(payload) ? payload : payload?.items ?? payload
+  const res = await api.put(`ingredients/${id}/unit-conversions`, Array.isArray(body) ? body : payload)
+  return res.data
+}
+
+/** PATCH /ingredients/:id @param {number|string} id @param {{ category_id?: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null, tags?: string[]|null, is_active?: boolean }} payload */
 export async function updateIngredientById(id, payload) {
   const res = await api.patch(`ingredients/${id}`, payload)
   return res.data

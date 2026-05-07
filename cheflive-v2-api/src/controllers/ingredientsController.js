@@ -13,6 +13,7 @@ class IngredientsController {
     this.bulkUploadIngredients = this.bulkUploadIngredients.bind(this)
     this.bulkCreateIngredients = this.bulkCreateIngredients.bind(this)
     this.bulkUpdateIngredients = this.bulkUpdateIngredients.bind(this)
+    this.getIngredientByItemCode = this.getIngredientByItemCode.bind(this)
     this.createIngredient = this.createIngredient.bind(this)
     this.listIngredients = this.listIngredients.bind(this)
     this.getIngredientById = this.getIngredientById.bind(this)
@@ -60,6 +61,7 @@ class IngredientsController {
       const mapped = {
         organization_id: req.user.organization_id,
         category_id: r.category_id !== undefined && r.category_id !== '' ? Number(r.category_id) : undefined,
+        item_code: r.item_code !== undefined && r.item_code !== '' ? Number(r.item_code) : undefined,
         name: r.name,
         unit: r.unit,
         base_price: r.base_price !== undefined && r.base_price !== '' ? Number(r.base_price) : undefined,
@@ -363,6 +365,18 @@ class IngredientsController {
 
     const created = await req.models.ingredient.create(parsed.data)
     return res.json({ ingredient: created })
+  }
+
+  async getIngredientByItemCode(req, res) {
+    const code = Number(req.params.item_code)
+    if (!Number.isFinite(code) || code <= 0) return res.status(400).json({ error: 'Invalid item_code' })
+
+    const item = await req.models.ingredient.getByItemCode({
+      organization_id: req.user.organization_id,
+      item_code: code,
+    })
+    if (!item) return res.status(404).json({ error: 'Not found' })
+    return res.json({ ingredient: item })
   }
 
   async listIngredients(req, res) {

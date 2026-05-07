@@ -15,6 +15,7 @@ import { ConfirmModal } from '../../../components/ConfirmModal.jsx'
 import { CategoriesProvider, useCategories } from '../../../context/CategoriesContext.jsx'
 import { MultiSelect } from '../../../components/MultiSelect.jsx'
 import { Switch } from '../../../components/Switch.jsx'
+import { IngredientUnitConversionsModal } from '../../../components/IngredientUnitConversionsModal.jsx'
 
 function csvEscape(cell) {
   const s = cell === null || cell === undefined ? '' : String(cell)
@@ -30,7 +31,7 @@ function formatTagsForCsv(tags) {
 
 /** @param {Array<Record<string, unknown>>} rows */
 function ingredientsToCsv(rows) {
-  const headers = ['id', 'category_id', 'category_name', 'name', 'unit', 'base_price', 'tags', 'is_active', 'updated_at']
+  const headers = ['id', 'item_code', 'category_id', 'category_name', 'name', 'unit', 'base_price', 'tags', 'is_active', 'updated_at']
   const lines = [headers.join(',')]
   for (const r of rows) {
     const base =
@@ -39,6 +40,7 @@ function ingredientsToCsv(rows) {
     lines.push(
       [
         csvEscape(r.id),
+        csvEscape(r.item_code ?? ''),
         csvEscape(r.category_id),
         csvEscape(r.category_name ?? ''),
         csvEscape(r.name ?? ''),
@@ -81,18 +83,30 @@ function InventoryIngredientsInnerPage() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => /** @type {string[]} */ ([]))
   const [openMenuForId, setOpenMenuForId] = useState(null)
   const [editRow, setEditRow] = useState(null)
-  const [editForm, setEditForm] = useState(() => ({ name: '', unit: '', base_price: '' }))
+  const [editForm, setEditForm] = useState(() => ({ item_code: '', name: '', unit: '', base_price: '' }))
   const [deleteRow, setDeleteRow] = useState(null)
   const [selectedRowIds, setSelectedRowIds] = useState(() => [])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [exportingCsv, setExportingCsv] = useState(false)
   const [activeSavingIds, setActiveSavingIds] = useState(() => /** @type {number[]} */ ([]))
+  const [conversionsIngredient, setConversionsIngredient] = useState(null)
 
   const columns = useMemo(
     () => [
+    { key: 'item_code', header: 'Item code', className: 'w-[120px]', render: (r) => <span className="tabular-nums">{r.item_code ?? '—'}</span> },
     { key: 'name', header: 'Ingredient' },
     { key: 'category_name', header: 'Category' },
     { key: 'unit', header: 'Unit', className: 'w-[90px]' },
+    {
+      key: 'unit_conversions',
+      header: 'Conversions',
+      className: 'w-[110px]',
+      cellClassName: 'text-center',
+      render: (r) => {
+        const n = Array.isArray(r?.unit_conversions) ? r.unit_conversions.length : 0
+        return <span className="tabular-nums">{n}</span>
+      },
+    },
     {
       key: 'is_active',
       header: 'Active',
@@ -169,6 +183,7 @@ function InventoryIngredientsInnerPage() {
                     setOpenMenuForId(null)
                     setEditRow(r)
                     setEditForm({
+                      item_code: r?.item_code === null || r?.item_code === undefined ? '' : String(r.item_code),
                       name: String(r?.name ?? ''),
                       unit: String(r?.unit ?? ''),
                       base_price: r?.base_price === null || r?.base_price === undefined ? '' : String(r.base_price),
@@ -176,6 +191,23 @@ function InventoryIngredientsInnerPage() {
                   }}
                 >
                   Edit
+                </button>
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setOpenMenuForId(null)
+                    setConversionsIngredient({
+                      id: Number(r.id),
+                      name: String(r?.name ?? ''),
+                      category_name: String(r?.category_name ?? ''),
+                      unit: String(r?.unit ?? ''),
+                      base_price: r?.base_price === null || r?.base_price === undefined ? null : Number(r.base_price),
+                      item_code: r?.item_code === null || r?.item_code === undefined ? null : Number(r.item_code),
+                    })
+                  }}
+                >
+                  Update conversions
                 </button>
                 <button
                   type="button"
@@ -384,6 +416,12 @@ function InventoryIngredientsInnerPage() {
         }}
       />
 
+      <IngredientUnitConversionsModal
+        open={Boolean(conversionsIngredient)}
+        ingredient={conversionsIngredient}
+        onClose={() => setConversionsIngredient(null)}
+      />
+
       {/* Edit modal (simple) */}
       {editRow ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={() => setEditRow(null)}>
@@ -393,6 +431,19 @@ function InventoryIngredientsInnerPage() {
               <div className="text-sm text-slate-600">{editRow?.name}</div>
             </div>
             <div className="space-y-3 p-4">
+              <label className="block">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Item code</div>
+                <input
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  value={editForm.item_code}
+                  onChange={(e) =>
+                    setEditForm((s) => ({ ...s, item_code: String(e.target.value ?? '').replace(/[^\d]/g, '') }))
+                  }
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="e.g. 89012345"
+                />
+              </label>
               <label className="block">
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Name</div>
                 <input
@@ -431,6 +482,12 @@ function InventoryIngredientsInnerPage() {
                   onClick={async () => {
                     try {
                       const payload = {
+                        item_code:
+                          editForm.item_code.trim() === ''
+                            ? null
+                            : Number.isFinite(Number(editForm.item_code))
+                              ? Number(editForm.item_code)
+                              : undefined,
                         name: editForm.name.trim() || undefined,
                         unit: editForm.unit.trim() || undefined,
                         base_price:

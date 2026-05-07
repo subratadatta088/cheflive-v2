@@ -7,6 +7,15 @@ const {
 } = require('../../../models/unitConversion/schema')
 const { openSqlite } = require('../db')
 
+function exec(db, sql) {
+  return new Promise((resolve, reject) => {
+    db.exec(sql, (err) => {
+      if (err) return reject(err)
+      resolve(true)
+    })
+  })
+}
+
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
@@ -73,6 +82,64 @@ class UnitConversionSqliteDAL extends UnitConversionModel {
     )
 
     return await this.getById(result.lastID)
+  }
+
+  /**
+   * Bulk create with per-row savepoints so failures don't rollback the whole batch.
+   * @param {Array<import('../../../models/unitConversion/schema').UnitConversionCreateSchema>} items
+   * @returns {Promise<{ created: number, failures: { row: number|null, ingredient_id: number|null, error: string }[] }>}
+   */
+  async bulkCreate(items) {
+    const inputs = Array.isArray(items) ? items : []
+    if (!inputs.length) return { created: 0, failures: [] }
+
+    let created = 0
+    /** @type {{ row: number|null, ingredient_id: number|null, error: string }[]} */
+    const failures = []
+
+    await exec(this.db, 'BEGIN')
+    try {
+      for (let i = 0; i < inputs.length; i++) {
+        const raw = inputs[i]
+        let payload
+        try {
+          payload = UnitConversionCreateSchema.parse(raw)
+        } catch {
+          failures.push({ row: i + 1, ingredient_id: Number(raw?.ingredient_id) || null, error: 'Invalid payload' })
+          continue
+        }
+
+        const sp = `sp_conv_${i}`
+        await exec(this.db, `SAVEPOINT ${sp}`)
+        try {
+          await this.create(payload)
+          await exec(this.db, `RELEASE ${sp}`)
+          created++
+        } catch (e) {
+          try {
+            await exec(this.db, `ROLLBACK TO ${sp}`)
+            await exec(this.db, `RELEASE ${sp}`)
+          } catch {
+            // ignore
+          }
+          failures.push({
+            row: i + 1,
+            ingredient_id: payload?.ingredient_id ?? null,
+            error: String(e?.message || 'Create failed'),
+          })
+        }
+      }
+
+      await exec(this.db, 'COMMIT')
+      return { created, failures }
+    } catch (e) {
+      try {
+        await exec(this.db, 'ROLLBACK')
+      } catch {
+        // ignore
+      }
+      throw e
+    }
   }
 
   async getById(id) {
@@ -142,6 +209,63 @@ class UnitConversionSqliteDAL extends UnitConversionModel {
     )
 
     return await this.getById(conversionId)
+  }
+
+  /**
+   * Bulk update with per-row savepoints so failures don't rollback the whole batch.
+   * @param {Array<{ id: number, data: unknown }>} items
+   * @returns {Promise<{ updated: number, failures: { row: number|null, id: number|null, error: string }[] }>}
+   */
+  async bulkUpdate(items) {
+    const inputs = Array.isArray(items) ? items : []
+    if (!inputs.length) return { updated: 0, failures: [] }
+
+    let updated = 0
+    /** @type {{ row: number|null, id: number|null, error: string }[]} */
+    const failures = []
+
+    await exec(this.db, 'BEGIN')
+    try {
+      for (let i = 0; i < inputs.length; i++) {
+        const raw = inputs[i] || {}
+        const id = Number(raw?.id)
+        if (!Number.isFinite(id)) {
+          failures.push({ row: i + 1, id: null, error: 'Invalid id' })
+          continue
+        }
+
+        const sp = `sp_conv_up_${i}`
+        await exec(this.db, `SAVEPOINT ${sp}`)
+        try {
+          const updatedRow = await this.updateById(id, raw?.data ?? {})
+          if (!updatedRow) throw new Error('Not found')
+          await exec(this.db, `RELEASE ${sp}`)
+          updated++
+        } catch (e) {
+          try {
+            await exec(this.db, `ROLLBACK TO ${sp}`)
+            await exec(this.db, `RELEASE ${sp}`)
+          } catch {
+            // ignore
+          }
+          failures.push({
+            row: i + 1,
+            id,
+            error: String(e?.message || 'Update failed'),
+          })
+        }
+      }
+
+      await exec(this.db, 'COMMIT')
+      return { updated, failures }
+    } catch (e) {
+      try {
+        await exec(this.db, 'ROLLBACK')
+      } catch {
+        // ignore
+      }
+      throw e
+    }
   }
 
   async deleteById(id) {

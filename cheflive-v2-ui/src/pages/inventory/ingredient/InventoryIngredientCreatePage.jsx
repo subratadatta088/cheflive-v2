@@ -19,6 +19,10 @@ function normalizeUnitInput(v) {
     .replace(/[^a-z0-9]/g, '')
 }
 
+function normalizeDigits(v) {
+  return String(v ?? '').replace(/[^\d]/g, '')
+}
+
 function looksLikeBulkDelimitedText(text) {
   const t = String(text ?? '')
   if (!t.trim()) return false
@@ -78,6 +82,7 @@ function newIngredientRow() {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     name: '',
+    item_code: '',
     category_id: '',
     unit: 'kg',
     base_price: '',
@@ -128,18 +133,25 @@ function InventoryIngredientCreateInnerPage() {
       const delimiter = detectDelimiter(lines[0])
       const rows2d = lines.map((l) => parseDelimitedLine(l, delimiter))
 
-      // Header support: name, category/category_id, unit, base_price, tags, is_active
+      // Header support: name, item_code/barcode, category/category_id, unit, base_price, tags, is_active
       const header = rows2d[0].map((h) => String(h).trim().toLowerCase())
-      const hasHeader = header.includes('name') || header.includes('ingredient') || header.includes('category') || header.includes('category_id')
+      // Only treat as header row if it explicitly includes name/ingredient.
+      const hasHeader = header.includes('name') || header.includes('ingredient')
       const dataRows = hasHeader ? rows2d.slice(1) : rows2d
 
       const idxByKey = (key) => (hasHeader ? header.indexOf(key) : -1)
       const idxName = idxByKey('name') >= 0 ? idxByKey('name') : 0
+      const idxItemCode =
+        idxByKey('item_code') >= 0
+          ? idxByKey('item_code')
+          : idxByKey('barcode') >= 0
+            ? idxByKey('barcode')
+            : idxByKey('code')
       const idxCategoryId = idxByKey('category_id')
       const idxCategory = idxByKey('category')
       const idxCategoryName = idxByKey('category_name')
       const idxUnit = idxByKey('unit')
-      const idxBase = idxByKey('base_price')
+      const idxBase = idxByKey('base_price') >= 0 ? idxByKey('base_price') : idxByKey('price')
       const idxTags = idxByKey('tags')
       const idxActive = idxByKey('is_active')
 
@@ -156,27 +168,39 @@ function InventoryIngredientCreateInnerPage() {
           const name = String(cols[idxName] ?? '').trim()
           if (!name) return null
 
-          let category_id = ''
-          if (idxCategoryId >= 0) {
-            category_id = String(cols[idxCategoryId] ?? '').trim()
-          } else if (idxCategory >= 0 || idxCategoryName >= 0) {
-            const pos = idxCategory >= 0 ? idxCategory : idxCategoryName
-            const catRaw = String(cols[pos] ?? '').trim()
-            category_id = /^\d+$/.test(catRaw)
-              ? catRaw
-              : (categoryByName.get(normalizeCategoryLabel(catRaw)) ?? '')
-          } else {
-            // default position if no header: [name, category, unit, base_price, tags, is_active]
-            const catRaw = String(cols[1] ?? '').trim()
-            category_id = /^\d+$/.test(catRaw)
-              ? catRaw
-              : (categoryByName.get(normalizeCategoryLabel(catRaw)) ?? '')
+          // If there is no header, do NOT guess columns.
+          // We only take the name and keep defaults for everything else.
+          if (!hasHeader) {
+            return {
+              ...newIngredientRow(),
+              name,
+              item_code: '',
+              category_id: String(fallbackCategoryId),
+              unit: 'kg',
+              base_price: '',
+              tags: '',
+              is_active: '1',
+            }
           }
 
-          const unit = (idxUnit >= 0 ? cols[idxUnit] : cols[2]) ?? ''
-          const base_price = (idxBase >= 0 ? cols[idxBase] : cols[3]) ?? ''
-          const tags = (idxTags >= 0 ? cols[idxTags] : cols[4]) ?? ''
-          const is_active = (idxActive >= 0 ? cols[idxActive] : cols[5]) ?? '1'
+          // Header mode: ONLY map fields that have explicit headers.
+          // Never fall back to positional guesses (prevents category leaking into tags/base_price).
+          const item_code = idxItemCode >= 0 ? String(cols[idxItemCode] ?? '').trim() : ''
+
+          let category_id = ''
+          if (idxCategoryId >= 0) category_id = String(cols[idxCategoryId] ?? '').trim()
+          else if (idxCategory >= 0) category_id = String(cols[idxCategory] ?? '').trim()
+          else if (idxCategoryName >= 0) category_id = String(cols[idxCategoryName] ?? '').trim()
+
+          // Resolve category name → id if needed.
+          if (category_id && !/^\d+$/.test(category_id)) {
+            category_id = categoryByName.get(normalizeCategoryLabel(category_id)) ?? ''
+          }
+
+          const unit = idxUnit >= 0 ? String(cols[idxUnit] ?? '').trim() : 'kg'
+          const base_price = idxBase >= 0 ? String(cols[idxBase] ?? '').trim() : ''
+          const tags = idxTags >= 0 ? String(cols[idxTags] ?? '').trim() : ''
+          const is_active = idxActive >= 0 ? String(cols[idxActive] ?? '').trim() : '1'
 
           const activeStr = String(is_active ?? '').trim().toLowerCase()
           const activeVal = activeStr === '0' || activeStr === 'false' || activeStr === 'no' ? '0' : '1'
@@ -184,6 +208,7 @@ function InventoryIngredientCreateInnerPage() {
           return {
             ...newIngredientRow(),
             name,
+            item_code: normalizeDigits(item_code),
             category_id: String(category_id || fallbackCategoryId),
             unit: normalizeUnitInput(String(unit || 'kg').trim() || 'kg') || 'kg',
             base_price: String(base_price ?? '').trim(),
@@ -229,6 +254,25 @@ function InventoryIngredientCreateInnerPage() {
 
   const columns = useMemo(
     () => [
+      {
+        key: 'item_code',
+        header: 'Item code',
+        kind: 'custom',
+        placeholder: 'e.g. 89012345',
+        thClassName: 'w-40',
+        align: 'left',
+        render: ({ row, updateCell }) => (
+          <input
+            value={String(row?.item_code ?? '')}
+            onChange={(e) => updateCell('item_code', normalizeDigits(e.target.value))}
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="e.g. 89012345"
+            className="box-border h-9 w-full min-w-[72px] border-0 bg-transparent px-2 py-1 text-sm tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
+          />
+        ),
+      },
       {
         key: 'name',
         header: 'Name',
@@ -341,9 +385,58 @@ function InventoryIngredientCreateInnerPage() {
           </Button>
           <BulkUploadButton
             variant="secondary"
-            onUpload={(file) => {
-              // TODO: POST multipart or parse CSV then batch API
-              console.warn('[BulkUpload] ingredients CSV:', file?.name)
+            onUpload={async (file) => {
+              try {
+                setError('')
+                const text = await file.text()
+                const normalized = String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+                if (!normalized) {
+                  showToast({ text: 'CSV file is empty.', theme: 'warning', duration: 6000 })
+                  return
+                }
+
+                const firstLine =
+                  normalized
+                    .split('\n')
+                    .map((l) => l.trim())
+                    .filter(Boolean)[0] ?? ''
+
+                if (!firstLine) {
+                  showToast({ text: 'CSV file is empty.', theme: 'warning', duration: 6000 })
+                  return
+                }
+
+                const delimiter = detectDelimiter(firstLine)
+                const header = parseDelimitedLine(firstLine, delimiter).map((h) => String(h ?? '').trim().toLowerCase())
+
+                const hasHeader = header.includes('name') || header.includes('ingredient')
+
+                if (!hasHeader) {
+                  showToast({
+                    text: 'CSV must include headers (e.g. name, category_id/category, unit, base_price, tags, is_active, item_code).',
+                    theme: 'warning',
+                    duration: 9000,
+                  })
+                  return
+                }
+
+                const hasName = header.includes('name') || header.includes('ingredient')
+                const hasCategory = header.includes('category_id') || header.includes('category') || header.includes('category_name')
+                if (!hasName || !hasCategory) {
+                  showToast({
+                    text: 'CSV headers must include at least “name” and “category_id” (or “category”).',
+                    theme: 'warning',
+                    duration: 9000,
+                  })
+                  return
+                }
+
+                // Reuse the exact same pipeline as paste.
+                addRowsFromDelimitedText(normalized, 0)
+              } catch (e) {
+                setError(e?.message || 'Failed to read CSV')
+                showToast({ text: 'Failed to read CSV file.', theme: 'danger', duration: 8000 })
+              }
             }}
           />
         </div>
@@ -398,11 +491,19 @@ function InventoryIngredientCreateInnerPage() {
                 const normalized = rows
                   .map((r, idx) => {
                     const name = String(r.name ?? '').trim()
+                    const item_code_raw = String(r.item_code ?? '').trim()
                     const category_id = Number(r.category_id)
                     const unit = normalizeUnitInput(String(r.unit ?? '').trim() || 'kg') || 'kg'
                     const base_price_raw = String(r.base_price ?? '').trim()
                     const tags_raw = String(r.tags ?? '').trim()
                     const is_active = String(r.is_active ?? '1') === '1'
+
+                    const item_code =
+                      item_code_raw === ''
+                        ? undefined
+                        : Number.isFinite(Number(item_code_raw))
+                          ? Number(item_code_raw)
+                          : undefined
 
                     const base_price =
                       base_price_raw === ''
@@ -421,6 +522,7 @@ function InventoryIngredientCreateInnerPage() {
 
                     return {
                       __row: idx + 1,
+                      item_code,
                       name,
                       category_id,
                       unit,

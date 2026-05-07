@@ -16,6 +16,10 @@ function normalizeUnitInput(v) {
     .replace(/[^a-z0-9]/g, '')
 }
 
+function normalizeDigits(v) {
+  return String(v ?? '').replace(/[^\d]/g, '')
+}
+
 function parseIdsFromLocation(location) {
   const params = new URLSearchParams(location?.search ?? '')
   const raw = params.get('ids') ?? ''
@@ -48,6 +52,7 @@ function ingredientToRow(ing) {
   return {
     id: Number.isFinite(idNum) ? String(idNum) : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     ingredient_id: Number.isFinite(idNum) ? idNum : null,
+    item_code: ing?.item_code === null || ing?.item_code === undefined ? '' : String(ing.item_code),
     name: String(ing?.name ?? ''),
     category_id: ing?.category_id === null || ing?.category_id === undefined ? '' : String(ing.category_id),
     unit: String(ing?.unit ?? 'kg') || 'kg',
@@ -88,6 +93,25 @@ function InventoryIngredientBulkEditInnerPage() {
 
   const columns = useMemo(
     () => [
+      {
+        key: 'item_code',
+        header: 'Item code',
+        kind: 'custom',
+        placeholder: 'e.g. 89012345',
+        thClassName: 'w-40',
+        align: 'left',
+        render: ({ row, updateCell }) => (
+          <input
+            value={String(row?.item_code ?? '')}
+            onChange={(e) => updateCell('item_code', normalizeDigits(e.target.value))}
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="e.g. 89012345"
+            className="box-border h-9 w-full min-w-[72px] border-0 bg-transparent px-2 py-1 text-sm tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
+          />
+        ),
+      },
       { key: 'name', header: 'Name', kind: 'text', placeholder: 'e.g. Basmati rice', thClassName: 'min-w-[220px]', align: 'left' },
       { key: 'category_id', header: 'Category', kind: 'select', options: categoryOptions, thClassName: 'w-40' },
       {
@@ -246,12 +270,20 @@ function InventoryIngredientBulkEditInnerPage() {
                   const ingredient_id = Number(r.ingredient_id)
                   if (!Number.isFinite(ingredient_id)) return null
 
+                  const item_code_raw = String(r.item_code ?? '').trim()
                   const name = String(r.name ?? '').trim()
                   const category_id = Number(r.category_id)
                   const unit = String(r.unit ?? '').trim() || 'kg'
                   const base_price_raw = String(r.base_price ?? '').trim()
                   const tags_raw = String(r.tags ?? '').trim()
                   const is_active = String(r.is_active ?? '1') === '1'
+
+                  const item_code =
+                    item_code_raw === ''
+                      ? null
+                      : Number.isFinite(Number(item_code_raw))
+                        ? Number(item_code_raw)
+                        : null
 
                   const base_price =
                     base_price_raw === ''
@@ -271,6 +303,7 @@ function InventoryIngredientBulkEditInnerPage() {
                   return {
                     __row: idx + 1,
                     id: ingredient_id,
+                    item_code,
                     name,
                     category_id,
                     unit,

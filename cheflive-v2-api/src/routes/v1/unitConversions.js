@@ -1,6 +1,7 @@
 const express = require('express')
 const { requireAuth } = require('../../middleware/auth')
 const { withScopedModels } = require('../../middleware/rbacModels')
+const { z } = require('zod')
 const {
   UnitConversionCreateSchema,
   UnitConversionIdSchema,
@@ -43,6 +44,51 @@ router.post('/', async (req, res) => {
     }
     throw e
   }
+})
+
+/**
+ * Bulk create unit conversions.
+ * POST /unit-conversions/bulk
+ * Body: { items: UnitConversionCreate[] } | UnitConversionCreate[]
+ */
+router.post('/bulk', async (req, res) => {
+  const raw = req.body
+  const items = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : null
+  if (!items) return res.status(400).json({ error: 'items array is required' })
+
+  const inputs = items.map((it) => {
+    const body = { ...it }
+    if (!isSuperAdmin(req)) body.organization_id = req.user.organization_id
+    return body
+  })
+
+  const valid = []
+  const failures = []
+  for (let i = 0; i < inputs.length; i++) {
+    const parsed = UnitConversionCreateSchema.safeParse(inputs[i])
+    if (!parsed.success) {
+      failures.push({ row: i + 1, ingredient_id: Number(inputs[i]?.ingredient_id) || null, error: 'Invalid payload' })
+      continue
+    }
+    valid.push({ row: i + 1, data: parsed.data })
+  }
+
+  const bulkResult = await req.models.unitConversion.bulkCreate(valid.map((v) => v.data))
+  const mergedFailures = [
+    ...failures,
+    ...(bulkResult.failures || []).map((f) => ({
+      row: f.row ?? null,
+      ingredient_id: f.ingredient_id ?? null,
+      error: f.error ?? 'Failed',
+    })),
+  ]
+
+  return res.json({
+    total: inputs.length,
+    created: bulkResult.created || 0,
+    failed: mergedFailures.length,
+    failures: mergedFailures,
+  })
 })
 
 router.get('/', async (req, res) => {
@@ -119,6 +165,61 @@ router.patch('/:id', async (req, res) => {
   const updated = await req.models.unitConversion.updateById(idParsed.data, bodyParsed.data)
   if (!updated) return res.status(404).json({ error: 'Not found' })
   return res.json({ unit_conversion: updated })
+})
+
+/**
+ * Bulk update unit conversions.
+ * PUT /unit-conversions/bulk
+ * Body: { items: UnitConversionBulkUpdate[] } | UnitConversionBulkUpdate[]
+ */
+router.put('/bulk', async (req, res) => {
+  const raw = req.body
+  const items = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : null
+  if (!items) return res.status(400).json({ error: 'items array is required' })
+
+  const BulkUpdateRowSchema = z
+    .object({ id: z.coerce.number().int().positive() })
+    .merge(UnitConversionUpdateSchema)
+
+  const failures = []
+  const valid = []
+
+  for (let i = 0; i < items.length; i++) {
+    const input = items[i] || {}
+    const parsed = BulkUpdateRowSchema.safeParse(input)
+    if (!parsed.success) {
+      failures.push({ row: i + 1, id: Number(input?.id) || null, error: 'Invalid payload' })
+      continue
+    }
+
+    const data = { ...parsed.data }
+    const id = data.id
+    delete data.id
+
+    if (!Object.keys(data).length) {
+      failures.push({ row: i + 1, id, error: 'No fields to update' })
+      continue
+    }
+
+    valid.push({ row: i + 1, id, data })
+  }
+
+  const bulkResult = await req.models.unitConversion.bulkUpdate(valid.map((v) => ({ id: v.id, data: v.data })))
+  const mergedFailures = [
+    ...failures,
+    ...(bulkResult.failures || []).map((f) => ({
+      row: f.row ?? null,
+      id: f.id ?? null,
+      error: f.error ?? 'Failed',
+    })),
+  ]
+
+  return res.json({
+    total: items.length,
+    updated: bulkResult.updated || 0,
+    failed: mergedFailures.length,
+    failures: mergedFailures,
+  })
 })
 
 router.delete('/:id', async (req, res) => {
