@@ -7,6 +7,8 @@ const {
   getPreparationItemModel,
   getPurchaseItemModel,
   getPurchaseModel,
+  getTransferItemModel,
+  getTransferModel,
   getUnitConversionModel,
   getUserModel,
 } = require('../drivers/factory')
@@ -31,6 +33,8 @@ function withScopedModels(req, res, next) {
   const unitConversionDal = getUnitConversionModel()
   const purchaseDal = getPurchaseModel()
   const purchaseItemDal = getPurchaseItemModel()
+  const transferDal = getTransferModel()
+  const transferItemDal = getTransferItemModel()
 
   if (roles.includes('superadmin')) {
     req.models = {
@@ -43,6 +47,8 @@ function withScopedModels(req, res, next) {
       unitConversion: unitConversionDal,
       purchase: purchaseDal,
       purchaseItem: purchaseItemDal,
+      transfer: transferDal,
+      transferItem: transferItemDal,
     }
     return next()
   }
@@ -359,6 +365,62 @@ function withScopedModels(req, res, next) {
           return await purchaseItemDal.deleteById(id)
         },
       },
+      transfer: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await transferDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await transferDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await transferDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await transferDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await transferDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await transferDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await transferDal.deleteById(id)
+        },
+      },
+      transferItem: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await transferItemDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await transferItemDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await transferItemDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await transferItemDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await transferItemDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await transferItemDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await transferItemDal.deleteById(id)
+        },
+      },
     }
     return next()
   }
@@ -514,6 +576,34 @@ function withScopedModels(req, res, next) {
           ...query,
           organization_id: req.user.organization_id,
         })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    transfer: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await transferDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await transferDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    transferItem: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await transferItemDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await transferItemDal.list({ ...query, organization_id: req.user.organization_id })
       },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),

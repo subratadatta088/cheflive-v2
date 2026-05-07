@@ -44,38 +44,71 @@ const baseStyles = {
 /**
  * @param {{
  *  options: { value: string, label: string }[],
- *  value: string[],
- *  onChange: (next: string[]) => void,
+ *  isMulti?: boolean,
+ *  value: string[] | string,
+ *  onChange: (next: string[] | string) => void,
+ *  onSearchChange?: (q: string) => void,
  *  placeholder?: string,
  *  className?: string,
  *  isDisabled?: boolean,
  * }} props
  */
-export function MultiSelect({ options, value, onChange, placeholder = 'Select…', className = '', isDisabled = false }) {
+export function MultiSelect({
+  options,
+  isMulti = true,
+  value,
+  onChange,
+  onSearchChange,
+  placeholder = 'Select…',
+  className = '',
+  isDisabled = false,
+}) {
   const safeOptions = Array.isArray(options) ? options : []
-  const safeValue = Array.isArray(value) ? value : []
+  const safeValue = isMulti ? (Array.isArray(value) ? value : []) : String(value ?? '')
 
   const valueOptions = useMemo(() => {
-    const set = new Set(safeValue.map(String))
-    return safeOptions.filter((o) => set.has(String(o.value)))
-  }, [safeOptions, safeValue])
+    if (isMulti) {
+      const set = new Set((Array.isArray(safeValue) ? safeValue : []).map(String))
+      return safeOptions.filter((o) => set.has(String(o.value)))
+    }
+    return safeOptions.find((o) => String(o.value) === String(safeValue)) ?? null
+  }, [isMulti, safeOptions, safeValue])
+
+  const portalTarget = typeof document !== 'undefined' ? document.body : null
 
   return (
     <div className={className}>
       <Select
-        isMulti
-        closeMenuOnSelect={false}
+        isMulti={Boolean(isMulti)}
+        closeMenuOnSelect={!isMulti}
         hideSelectedOptions={false}
         isDisabled={isDisabled}
+        menuPortalTarget={portalTarget}
+        menuPosition={portalTarget ? 'fixed' : 'absolute'}
         options={safeOptions}
         value={valueOptions}
+        onInputChange={(next, meta) => {
+          if (typeof onSearchChange !== 'function') return next
+          // react-select emits multiple actions; we only want real typing.
+          if (meta?.action !== 'input-change') return next
+          onSearchChange(String(next ?? ''))
+          return next
+        }}
         onChange={(selected) => {
-          const arr = Array.isArray(selected) ? selected : []
-          onChange(arr.map((o) => String(o.value)))
+          if (isMulti) {
+            const arr = Array.isArray(selected) ? selected : []
+            onChange(arr.map((o) => String(o.value)))
+            return
+          }
+          const one = selected && typeof selected === 'object' ? String(selected.value ?? '') : ''
+          onChange(one)
         }}
         placeholder={placeholder}
         components={animatedComponents}
-        styles={baseStyles}
+        styles={{
+          ...baseStyles,
+          menuPortal: (provided) => ({ ...provided, zIndex: 80 }),
+        }}
       />
     </div>
   )

@@ -8,6 +8,8 @@ const { v1Router } = require('./routes/v1')
 
 
 const app = express()
+// Avoid 304 "Not Modified" on JSON APIs (ETag-based conditional GET).
+// Useful for local dev where cached API responses are confusing.
 
 function redact(value) {
   if (!value || typeof value !== 'object') return value
@@ -27,6 +29,14 @@ function redact(value) {
 
 app.use(cors())
 app.use(express.json())
+// Make API responses non-cacheable by default.
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+  res.setHeader('Surrogate-Control', 'no-store')
+  next()
+})
 app.use(
   fileUpload({
     useTempFiles: false,

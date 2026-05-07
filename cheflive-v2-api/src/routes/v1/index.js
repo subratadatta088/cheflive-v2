@@ -8,6 +8,8 @@ const { preparationItemsRouter } = require('./preparationItems')
 const { unitConversionsRouter } = require('./unitConversions')
 const { purchasesRouter } = require('./purchases')
 const { purchaseItemsRouter } = require('./purchaseItems')
+const { transfersRouter } = require('./transfers')
+const { transferItemsRouter } = require('./transferItems')
 
 const router = express.Router()
 
@@ -20,5 +22,7 @@ router.use('/preparation-items', preparationItemsRouter)
 router.use('/unit-conversions', unitConversionsRouter)
 router.use('/purchases', purchasesRouter)
 router.use('/purchase-items', purchaseItemsRouter)
+router.use('/transfers', transfersRouter)
+router.use('/transfer-items', transferItemsRouter)
 
 module.exports = { v1Router: router }

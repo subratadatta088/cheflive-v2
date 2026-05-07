@@ -123,6 +123,28 @@ function getPurchaseItemModel() {
   throw new Error(`Unsupported DB_DRIVER: ${driver}`)
 }
 
+function getTransferModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { TransferSqliteDAL } = require('./sqlite/models/TransferSqliteDAL')
+    return new TransferSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getTransferItemModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { TransferItemSqliteDAL } = require('./sqlite/models/TransferItemSqliteDAL')
+    return new TransferItemSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
 module.exports = {
   getUserModel,
   getRoleModel,
@@ -135,4 +157,6 @@ module.exports = {
   getUnitConversionModel,
   getPurchaseModel,
   getPurchaseItemModel,
+  getTransferModel,
+  getTransferItemModel,
 }

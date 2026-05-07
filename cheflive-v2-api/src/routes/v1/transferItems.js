@@ -1,22 +1,19 @@
 const express = require('express')
 const { requireAuth } = require('../../middleware/auth')
 const { withScopedModels } = require('../../middleware/rbacModels')
-const { PurchasesController } = require('../../controllers/purchasesController')
+const { TransferItemsController } = require('../../controllers/transferItemsController')
 
 const router = express.Router()
 
 router.use(requireAuth, withScopedModels)
 
-const controller = new PurchasesController()
+const controller = new TransferItemsController()
 
 router.post('/', controller.create)
-
 router.get('/', controller.list)
-
 router.get('/:id', controller.getById)
-
 router.patch('/:id', controller.updateById)
-
 router.delete('/:id', controller.deleteById)
 
-module.exports = { purchasesRouter: router }
+module.exports = { transferItemsRouter: router }
+
