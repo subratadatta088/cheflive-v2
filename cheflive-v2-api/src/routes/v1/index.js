@@ -10,6 +10,8 @@ const { purchasesRouter } = require('./purchases')
 const { purchaseItemsRouter } = require('./purchaseItems')
 const { transfersRouter } = require('./transfers')
 const { transferItemsRouter } = require('./transferItems')
+const { runningStockRouter } = require('./runningStock')
+const { stockTransitionsRouter } = require('./stockTransitionStates')
 
 const router = express.Router()
 
@@ -24,5 +26,7 @@ router.use('/purchases', purchasesRouter)
 router.use('/purchase-items', purchaseItemsRouter)
 router.use('/transfers', transfersRouter)
 router.use('/transfer-items', transferItemsRouter)
+router.use('/running-stock', runningStockRouter)
+router.use('/stock-transitions', stockTransitionsRouter)
 
 module.exports = { v1Router: router }

@@ -145,6 +145,30 @@ function getTransferItemModel() {
   throw new Error(`Unsupported DB_DRIVER: ${driver}`)
 }
 
+function getRunningStockModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { RunningStockSqliteDAL } = require('./sqlite/models/RunningStockSqliteDAL')
+    return new RunningStockSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getStockTransitionStateModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const {
+      StockTransitionStateSqliteDAL,
+    } = require('./sqlite/models/StockTransitionStateSqliteDAL')
+    return new StockTransitionStateSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
 module.exports = {
   getUserModel,
   getRoleModel,
@@ -159,4 +183,6 @@ module.exports = {
   getPurchaseItemModel,
   getTransferModel,
   getTransferItemModel,
+  getRunningStockModel,
+  getStockTransitionStateModel,
 }

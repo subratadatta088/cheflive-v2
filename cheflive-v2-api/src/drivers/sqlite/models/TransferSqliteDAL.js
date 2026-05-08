@@ -7,6 +7,7 @@ const {
 } = require('../../../models/transfer/schema')
 const { TransferItemRowSchema } = require('../../../models/transferItem/schema')
 const { openSqlite } = require('../db')
+const { applyTransferItemMovement } = require('../stock/applyStockMovement')
 
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -172,7 +173,7 @@ class TransferSqliteDAL extends TransferModel {
 
       if (Array.isArray(payload.items) && payload.items.length) {
         for (const it of payload.items) {
-          await run(
+          const insRes = await run(
             this.db,
             `INSERT INTO transfer_items (
                organization_id,
@@ -193,6 +194,19 @@ class TransferSqliteDAL extends TransferModel {
               now,
             ]
           )
+
+          await applyTransferItemMovement(this.db, {
+            organization_id: payload.organization_id,
+            from_origin_id: payload.from_origin_id ?? null,
+            to_origin_id: payload.to_origin_id ?? null,
+            ingredient_id: it.ingredient_id,
+            qty: it.qty,
+            unit_id: it.unit_id ?? null,
+            source_transfer_id: transferId,
+            source_transfer_item_id: insRes.lastID,
+            occurred_at: payload.transfer_date || now,
+            created_by: null,
+          })
         }
       }
 
@@ -281,102 +295,191 @@ class TransferSqliteDAL extends TransferModel {
     const existing = await get(this.db, `SELECT * FROM transfers WHERE id = ?`, [tid])
     if (!existing) return null
 
-    if (payload.from_origin_id !== undefined && payload.from_origin_id !== null) {
-      const originRow = await get(
-        this.db,
-        `SELECT organization_id FROM origins WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
-        [payload.from_origin_id]
-      )
-      if (!originRow) throw new Error('Origin not found')
-      if (Number(originRow.organization_id) !== Number(existing.organization_id))
-        throw new Error('Origin organization mismatch')
-    }
+    return await withTransaction(this.db, async () => {
+      if (payload.from_origin_id !== undefined && payload.from_origin_id !== null) {
+        const originRow = await get(
+          this.db,
+          `SELECT organization_id FROM origins WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [payload.from_origin_id]
+        )
+        if (!originRow) throw new Error('Origin not found')
+        if (Number(originRow.organization_id) !== Number(existing.organization_id))
+          throw new Error('Origin organization mismatch')
+      }
 
-    if (payload.to_origin_id !== undefined && payload.to_origin_id !== null) {
-      const originRow = await get(
-        this.db,
-        `SELECT organization_id FROM origins WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
-        [payload.to_origin_id]
-      )
-      if (!originRow) throw new Error('Origin not found')
-      if (Number(originRow.organization_id) !== Number(existing.organization_id))
-        throw new Error('Origin organization mismatch')
-    }
+      if (payload.to_origin_id !== undefined && payload.to_origin_id !== null) {
+        const originRow = await get(
+          this.db,
+          `SELECT organization_id FROM origins WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [payload.to_origin_id]
+        )
+        if (!originRow) throw new Error('Origin not found')
+        if (Number(originRow.organization_id) !== Number(existing.organization_id))
+          throw new Error('Origin organization mismatch')
+      }
 
-    if (payload.from_purchase_id !== undefined && payload.from_purchase_id !== null) {
-      const purchaseRow = await get(
-        this.db,
-        `SELECT organization_id FROM purchases WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
-        [payload.from_purchase_id]
-      )
-      if (!purchaseRow) throw new Error('Purchase not found')
-      if (Number(purchaseRow.organization_id) !== Number(existing.organization_id))
-        throw new Error('Purchase organization mismatch')
-    }
+      if (payload.from_purchase_id !== undefined && payload.from_purchase_id !== null) {
+        const purchaseRow = await get(
+          this.db,
+          `SELECT organization_id FROM purchases WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [payload.from_purchase_id]
+        )
+        if (!purchaseRow) throw new Error('Purchase not found')
+        if (Number(purchaseRow.organization_id) !== Number(existing.organization_id))
+          throw new Error('Purchase organization mismatch')
+      }
 
-    if (payload.to_utilisation_id !== undefined && payload.to_utilisation_id !== null) {
-      const utilRow = await get(
-        this.db,
-        `SELECT organization_id FROM utilizations WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
-        [payload.to_utilisation_id]
-      )
-      if (!utilRow) throw new Error('Utilization not found')
-      if (Number(utilRow.organization_id) !== Number(existing.organization_id))
-        throw new Error('Utilization organization mismatch')
-    }
+      if (payload.to_utilisation_id !== undefined && payload.to_utilisation_id !== null) {
+        const utilRow = await get(
+          this.db,
+          `SELECT organization_id FROM utilizations WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [payload.to_utilisation_id]
+        )
+        if (!utilRow) throw new Error('Utilization not found')
+        if (Number(utilRow.organization_id) !== Number(existing.organization_id))
+          throw new Error('Utilization organization mismatch')
+      }
 
-    const fields = []
-    const params = []
+      const oldFromOrigin = existing.from_origin_id ?? null
+      const oldToOrigin = existing.to_origin_id ?? null
+      const newFromOrigin =
+        payload.from_origin_id === undefined ? oldFromOrigin : payload.from_origin_id ?? null
+      const newToOrigin =
+        payload.to_origin_id === undefined ? oldToOrigin : payload.to_origin_id ?? null
 
-    if (payload.from_origin_id !== undefined) {
-      fields.push('from_origin_id = ?')
-      params.push(payload.from_origin_id)
-    }
-    if (payload.to_origin_id !== undefined) {
-      fields.push('to_origin_id = ?')
-      params.push(payload.to_origin_id)
-    }
-    if (payload.from_purchase_id !== undefined) {
-      fields.push('from_purchase_id = ?')
-      params.push(payload.from_purchase_id)
-    }
-    if (payload.to_utilisation_id !== undefined) {
-      fields.push('to_utilisation_id = ?')
-      params.push(payload.to_utilisation_id)
-    }
-    if (payload.transfer_date !== undefined) {
-      fields.push('transfer_date = ?')
-      params.push(payload.transfer_date)
-      fields.push('date = ?')
-      params.push(payload.transfer_date)
-    }
-    if (payload.note !== undefined) {
-      fields.push('note = ?')
-      params.push(payload.note)
-    }
+      const originsChanged =
+        Number(oldFromOrigin || 0) !== Number(newFromOrigin || 0) ||
+        Number(oldToOrigin || 0) !== Number(newToOrigin || 0)
 
-    fields.push('updated_at = ?')
-    params.push(new Date().toISOString())
+      const updatedAt = new Date().toISOString()
+      const occurredAt = payload.transfer_date || existing.transfer_date || existing.date || updatedAt
 
-    await run(this.db, `UPDATE transfers SET ${fields.join(', ')} WHERE id = ?`, [...params, tid])
+      if (originsChanged) {
+        const itemRows = await all(
+          this.db,
+          `SELECT * FROM transfer_items
+           WHERE transfer_id = ?
+             AND (deleted_at IS NULL OR deleted_at = '')`,
+          [tid]
+        )
 
-    return await this.getById(tid)
+        for (const it of itemRows) {
+          await applyTransferItemMovement(this.db, {
+            organization_id: Number(existing.organization_id),
+            from_origin_id: oldFromOrigin || null,
+            to_origin_id: oldToOrigin || null,
+            ingredient_id: Number(it.ingredient_id),
+            qty: Number(it.qty),
+            unit_id: it.unit_id ?? null,
+            source_transfer_id: tid,
+            source_transfer_item_id: Number(it.id),
+            occurred_at: occurredAt,
+            created_by: null,
+            reversal: true,
+          })
+
+          await applyTransferItemMovement(this.db, {
+            organization_id: Number(existing.organization_id),
+            from_origin_id: newFromOrigin || null,
+            to_origin_id: newToOrigin || null,
+            ingredient_id: Number(it.ingredient_id),
+            qty: Number(it.qty),
+            unit_id: it.unit_id ?? null,
+            source_transfer_id: tid,
+            source_transfer_item_id: Number(it.id),
+            occurred_at: occurredAt,
+            created_by: null,
+            reversal: false,
+          })
+        }
+      }
+
+      const fields = []
+      const params = []
+
+      if (payload.from_origin_id !== undefined) {
+        fields.push('from_origin_id = ?')
+        params.push(payload.from_origin_id)
+      }
+      if (payload.to_origin_id !== undefined) {
+        fields.push('to_origin_id = ?')
+        params.push(payload.to_origin_id)
+      }
+      if (payload.from_purchase_id !== undefined) {
+        fields.push('from_purchase_id = ?')
+        params.push(payload.from_purchase_id)
+      }
+      if (payload.to_utilisation_id !== undefined) {
+        fields.push('to_utilisation_id = ?')
+        params.push(payload.to_utilisation_id)
+      }
+      if (payload.transfer_date !== undefined) {
+        fields.push('transfer_date = ?')
+        params.push(payload.transfer_date)
+        fields.push('date = ?')
+        params.push(payload.transfer_date)
+      }
+      if (payload.note !== undefined) {
+        fields.push('note = ?')
+        params.push(payload.note)
+      }
+
+      fields.push('updated_at = ?')
+      params.push(updatedAt)
+
+      await run(this.db, `UPDATE transfers SET ${fields.join(', ')} WHERE id = ?`, [...params, tid])
+
+      return await this.getById(tid)
+    })
   }
 
   async deleteById(id) {
     const tid = TransferIdSchema.parse(id)
     const now = new Date().toISOString()
-    await run(this.db, `UPDATE transfers SET deleted_at = ?, updated_at = ? WHERE id = ?`, [
-      now,
-      now,
-      tid,
-    ])
-    await run(
-      this.db,
-      `UPDATE transfer_items SET deleted_at = ?, updated_at = ? WHERE transfer_id = ?`,
-      [now, now, tid]
-    )
-    return true
+
+    return await withTransaction(this.db, async () => {
+      const existing = await get(this.db, `SELECT * FROM transfers WHERE id = ?`, [tid])
+      if (!existing) return false
+      if (existing.deleted_at) return true
+
+      const itemRows = await all(
+        this.db,
+        `SELECT * FROM transfer_items
+         WHERE transfer_id = ?
+           AND (deleted_at IS NULL OR deleted_at = '')`,
+        [tid]
+      )
+
+      const occurredAt = existing.transfer_date || existing.date || now
+
+      for (const it of itemRows) {
+        await applyTransferItemMovement(this.db, {
+          organization_id: Number(existing.organization_id),
+          from_origin_id: existing.from_origin_id ?? null,
+          to_origin_id: existing.to_origin_id ?? null,
+          ingredient_id: Number(it.ingredient_id),
+          qty: Number(it.qty),
+          unit_id: it.unit_id ?? null,
+          source_transfer_id: tid,
+          source_transfer_item_id: Number(it.id),
+          occurred_at: occurredAt,
+          created_by: null,
+          reversal: true,
+        })
+      }
+
+      await run(this.db, `UPDATE transfers SET deleted_at = ?, updated_at = ? WHERE id = ?`, [
+        now,
+        now,
+        tid,
+      ])
+      await run(
+        this.db,
+        `UPDATE transfer_items SET deleted_at = ?, updated_at = ? WHERE transfer_id = ?`,
+        [now, now, tid]
+      )
+      return true
+    })
   }
 }
 

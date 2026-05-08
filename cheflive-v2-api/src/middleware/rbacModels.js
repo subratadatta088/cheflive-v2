@@ -7,6 +7,8 @@ const {
   getPreparationItemModel,
   getPurchaseItemModel,
   getPurchaseModel,
+  getRunningStockModel,
+  getStockTransitionStateModel,
   getTransferItemModel,
   getTransferModel,
   getUnitConversionModel,
@@ -35,6 +37,8 @@ function withScopedModels(req, res, next) {
   const purchaseItemDal = getPurchaseItemModel()
   const transferDal = getTransferModel()
   const transferItemDal = getTransferItemModel()
+  const runningStockDal = getRunningStockModel()
+  const stockTransitionStateDal = getStockTransitionStateModel()
 
   if (roles.includes('superadmin')) {
     req.models = {
@@ -49,6 +53,8 @@ function withScopedModels(req, res, next) {
       purchaseItem: purchaseItemDal,
       transfer: transferDal,
       transferItem: transferItemDal,
+      runningStock: runningStockDal,
+      stockTransitionState: stockTransitionStateDal,
     }
     return next()
   }
@@ -421,6 +427,34 @@ function withScopedModels(req, res, next) {
           return await transferItemDal.deleteById(id)
         },
       },
+      runningStock: {
+        getById: async (id) => {
+          const row = await runningStockDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await runningStockDal.list({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+      },
+      stockTransitionState: {
+        getById: async (id) => {
+          const row = await stockTransitionStateDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await stockTransitionStateDal.list({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+      },
     }
     return next()
   }
@@ -607,6 +641,34 @@ function withScopedModels(req, res, next) {
       },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),
+    },
+    runningStock: {
+      getById: async (id) => {
+        const row = await runningStockDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await runningStockDal.list({
+          ...query,
+          organization_id: req.user.organization_id,
+        })
+      },
+    },
+    stockTransitionState: {
+      getById: async (id) => {
+        const row = await stockTransitionStateDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await stockTransitionStateDal.list({
+          ...query,
+          organization_id: req.user.organization_id,
+        })
+      },
     },
   }
   return next()
