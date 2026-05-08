@@ -17,6 +17,9 @@ class IngredientsController {
     this.createIngredient = this.createIngredient.bind(this)
     this.listIngredients = this.listIngredients.bind(this)
     this.getIngredientById = this.getIngredientById.bind(this)
+    this.getIngredientRunningStock = this.getIngredientRunningStock.bind(this)
+    this.getIngredientRunningStockByOrigin = this.getIngredientRunningStockByOrigin.bind(this)
+    this.listIngredientStockTransitions = this.listIngredientStockTransitions.bind(this)
     this.updateIngredientById = this.updateIngredientById.bind(this)
     this.deleteIngredientById = this.deleteIngredientById.bind(this)
   }
@@ -416,6 +419,102 @@ class IngredientsController {
     const item = await req.models.ingredient.getById(idParsed.data)
     if (!item) return res.status(404).json({ error: 'Not found' })
     return res.json({ ingredient: item })
+  }
+
+  async getIngredientRunningStock(req, res) {
+    const idParsed = IngredientIdSchema.safeParse(Number(req.params.id))
+    if (!idParsed.success) return res.status(400).json({ error: 'Invalid id' })
+
+    const ingredient = await req.models.ingredient.getById(idParsed.data)
+    if (!ingredient) return res.status(404).json({ error: 'Not found' })
+
+    const QuerySchema = z.object({
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().positive().max(1000).default(1000),
+    })
+
+    const qParsed = QuerySchema.safeParse(req.query)
+    if (!qParsed.success) return res.status(400).json({ error: 'Invalid query' })
+
+    const items = await req.models.runningStock.list({
+      organization_id: req.user.organization_id,
+      ingredient_id: idParsed.data,
+      page: qParsed.data.page,
+      limit: qParsed.data.limit,
+    })
+
+    return res.json({
+      ingredient_id: idParsed.data,
+      unit: ingredient.unit,
+      items,
+    })
+  }
+
+  async getIngredientRunningStockByOrigin(req, res) {
+    const idParsed = IngredientIdSchema.safeParse(Number(req.params.id))
+    if (!idParsed.success) return res.status(400).json({ error: 'Invalid id' })
+
+    const originId = Number(req.params.origin_id)
+    if (!Number.isFinite(originId) || originId <= 0)
+      return res.status(400).json({ error: 'Invalid origin_id' })
+
+    const ingredient = await req.models.ingredient.getById(idParsed.data)
+    if (!ingredient) return res.status(404).json({ error: 'Not found' })
+
+    const rows = await req.models.runningStock.list({
+      organization_id: req.user.organization_id,
+      ingredient_id: idParsed.data,
+      origin_id: originId,
+      page: 1,
+      limit: 1,
+    })
+
+    const row = Array.isArray(rows) && rows.length ? rows[0] : null
+
+    return res.json({
+      ingredient_id: idParsed.data,
+      origin_id: originId,
+      unit: ingredient.unit,
+      qty: row ? row.qty : 0,
+      running_stock: row,
+    })
+  }
+
+  async listIngredientStockTransitions(req, res) {
+    const idParsed = IngredientIdSchema.safeParse(Number(req.params.id))
+    if (!idParsed.success) return res.status(400).json({ error: 'Invalid id' })
+
+    const ingredient = await req.models.ingredient.getById(idParsed.data)
+    if (!ingredient) return res.status(404).json({ error: 'Not found' })
+
+    const QuerySchema = z.object({
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().positive().max(200).default(50),
+      origin_id: z.coerce.number().int().positive().optional(),
+      from_date: z.string().min(1).optional(),
+      to_date: z.string().min(1).optional(),
+    })
+
+    const qParsed = QuerySchema.safeParse(req.query)
+    if (!qParsed.success) return res.status(400).json({ error: 'Invalid query' })
+
+    const items = await req.models.stockTransitionState.list({
+      organization_id: req.user.organization_id,
+      ingredient_id: idParsed.data,
+      origin_id: qParsed.data.origin_id,
+      from_date: qParsed.data.from_date,
+      to_date: qParsed.data.to_date,
+      page: qParsed.data.page,
+      limit: qParsed.data.limit,
+    })
+
+    return res.json({
+      ingredient_id: idParsed.data,
+      unit: ingredient.unit,
+      page: qParsed.data.page,
+      limit: qParsed.data.limit,
+      items,
+    })
   }
 
   async updateIngredientById(req, res) {

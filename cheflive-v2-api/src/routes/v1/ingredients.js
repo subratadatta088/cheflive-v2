@@ -15,6 +15,11 @@ router.post('/bulk', ingredientsController.bulkCreateIngredients)
 router.put('/bulk', ingredientsController.bulkUpdateIngredients)
 router.get('/by-item-code/:item_code', ingredientsController.getIngredientByItemCode)
 
+// Stock endpoints scoped to a single ingredient
+router.get('/:id/running-stock', ingredientsController.getIngredientRunningStock)
+router.get('/:id/running-stock/:origin_id', ingredientsController.getIngredientRunningStockByOrigin)
+router.get('/:id/stock-transitions', ingredientsController.listIngredientStockTransitions)
+
 /**
  * Unit conversions for an ingredient.
  * Always scoped to the ingredient's org (via ingredient.getById + RBAC).
