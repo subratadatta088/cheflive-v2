@@ -7,7 +7,6 @@ const {
   TransferItemUpdateSchema,
 } = require('../../../models/transferItem/schema')
 const { openSqlite } = require('../db')
-const { applyTransferItemMovement } = require('../stock/applyStockMovement')
 
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -115,19 +114,6 @@ class TransferItemSqliteDAL extends TransferItemModel {
         ]
       )
 
-      await applyTransferItemMovement(this.db, {
-        organization_id: payload.organization_id,
-        from_origin_id: transferRow.from_origin_id ?? null,
-        to_origin_id: transferRow.to_origin_id ?? null,
-        ingredient_id: payload.ingredient_id,
-        qty: payload.qty,
-        unit_id: payload.unit_id ?? null,
-        source_transfer_id: payload.transfer_id,
-        source_transfer_item_id: result.lastID,
-        occurred_at: transferRow.transfer_date || transferRow.date || now,
-        created_by: null,
-      })
-
       const created = await get(this.db, `SELECT * FROM transfer_items WHERE id = ?`, [
         result.lastID,
       ])
@@ -180,45 +166,7 @@ class TransferItemSqliteDAL extends TransferItemModel {
       const transferRow = await loadParentTransfer(this.db, existing.transfer_id)
       if (!transferRow) throw new Error('Transfer not found')
 
-      const oldQty = Number(existing.qty)
-      const oldUnitId = existing.unit_id ?? null
-      const newQty = payload.qty !== undefined ? Number(payload.qty) : oldQty
-      const newUnitId = payload.unit_id !== undefined ? payload.unit_id : oldUnitId
-
-      const stockMutated = newQty !== oldQty || (newUnitId ?? null) !== (oldUnitId ?? null)
-
       const now = new Date().toISOString()
-      const occurredAt = transferRow.transfer_date || transferRow.date || now
-
-      if (stockMutated) {
-        await applyTransferItemMovement(this.db, {
-          organization_id: Number(existing.organization_id),
-          from_origin_id: transferRow.from_origin_id ?? null,
-          to_origin_id: transferRow.to_origin_id ?? null,
-          ingredient_id: Number(existing.ingredient_id),
-          qty: oldQty,
-          unit_id: oldUnitId,
-          source_transfer_id: Number(existing.transfer_id),
-          source_transfer_item_id: itemId,
-          occurred_at: occurredAt,
-          created_by: null,
-          reversal: true,
-        })
-
-        await applyTransferItemMovement(this.db, {
-          organization_id: Number(existing.organization_id),
-          from_origin_id: transferRow.from_origin_id ?? null,
-          to_origin_id: transferRow.to_origin_id ?? null,
-          ingredient_id: Number(existing.ingredient_id),
-          qty: newQty,
-          unit_id: newUnitId,
-          source_transfer_id: Number(existing.transfer_id),
-          source_transfer_item_id: itemId,
-          occurred_at: occurredAt,
-          created_by: null,
-          reversal: false,
-        })
-      }
 
       const fields = []
       const params = []
@@ -254,22 +202,7 @@ class TransferItemSqliteDAL extends TransferItemModel {
       if (!existing) return false
       if (existing.deleted_at) return true
 
-      const transferRow = await loadParentTransfer(this.db, existing.transfer_id)
-      if (transferRow && !transferRow.deleted_at) {
-        await applyTransferItemMovement(this.db, {
-          organization_id: Number(existing.organization_id),
-          from_origin_id: transferRow.from_origin_id ?? null,
-          to_origin_id: transferRow.to_origin_id ?? null,
-          ingredient_id: Number(existing.ingredient_id),
-          qty: Number(existing.qty),
-          unit_id: existing.unit_id ?? null,
-          source_transfer_id: Number(existing.transfer_id),
-          source_transfer_item_id: itemId,
-          occurred_at: transferRow.transfer_date || transferRow.date || now,
-          created_by: null,
-          reversal: true,
-        })
-      }
+      await loadParentTransfer(this.db, existing.transfer_id)
 
       await run(this.db, `UPDATE transfer_items SET deleted_at = ?, updated_at = ? WHERE id = ?`, [
         now,

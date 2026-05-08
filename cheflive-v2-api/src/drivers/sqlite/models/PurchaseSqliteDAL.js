@@ -7,6 +7,7 @@ const {
 } = require('../../../models/purchase/schema')
 const { PurchaseItemRowSchema } = require('../../../models/purchaseItem/schema')
 const { openSqlite } = require('../db')
+const { applyStockMovement } = require('../stock/applyStockMovement')
 
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -281,6 +282,208 @@ class PurchaseSqliteDAL extends PurchaseModel {
       [now, now, pid]
     )
     return true
+  }
+
+  /**
+   * Business operation: purchase created -> ledger + stock update + snapshot.
+   * For now:
+   * - Apply purchase_items qty into running_stock at purchases.origin_id
+   * - Write stock_transition_states rows (source_type = purchase_in)
+   * Note: purchase_items.unit is TEXT. If present and differs from ingredient.unit,
+   * we use ingredient_unit_conversions (from_unit -> to_unit = ingredient.unit).
+   */
+  async processPurchaseCreated(purchaseId, meta = {}) {
+    const pid = PurchaseIdSchema.parse(purchaseId)
+
+    return await withTransaction(this.db, async () => {
+      const purchase = await this.getById(pid)
+      if (!purchase) throw new Error('Purchase not found')
+      if (purchase.deleted_at) return true
+
+      const occurred_at = meta?.occurred_at || purchase.date || new Date().toISOString()
+      const created_by = meta?.actor_user_id ?? null
+
+      const origin_id = Number(purchase.origin_id)
+      const org_id = Number(purchase.organization_id)
+
+      const items = Array.isArray(purchase.items) ? purchase.items : []
+      for (const it of items) {
+        const ingredient_id = Number(it.ingredient_id)
+        const qty = Number(it.qty)
+        if (!Number.isFinite(qty)) continue
+
+        const ingRow = await get(
+          this.db,
+          `SELECT unit FROM ingredients WHERE id = ? AND organization_id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [ingredient_id, org_id]
+        )
+        if (!ingRow) throw new Error('Ingredient not found')
+        const default_unit = String(ingRow.unit || '').trim()
+        if (!default_unit) throw new Error('Ingredient default unit is missing')
+
+        let qty_default = qty
+        const fromUnit = it.unit ? String(it.unit).trim() : ''
+        if (fromUnit && fromUnit !== default_unit) {
+          const conv = await get(
+            this.db,
+            `SELECT factor FROM ingredient_unit_conversions
+             WHERE organization_id = ?
+               AND ingredient_id = ?
+               AND from_unit = ?
+               AND to_unit = ?
+               AND (deleted_at IS NULL OR deleted_at = '')`,
+            [org_id, ingredient_id, fromUnit, default_unit]
+          )
+          if (!conv) throw new Error('Unit conversion not found')
+          const factor = Number(conv.factor)
+          if (!Number.isFinite(factor) || factor <= 0) throw new Error('Unit conversion factor invalid')
+          qty_default = qty * factor
+        }
+
+        await applyStockMovement(this.db, {
+          organization_id: org_id,
+          origin_id,
+          ingredient_id,
+          qty_delta: +qty_default,
+          unit: default_unit,
+          source_type: 'purchase_in',
+          source_purchase_id: pid,
+          source_purchase_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+        })
+      }
+
+      return true
+    })
+  }
+
+  async processPurchaseUpdated(purchaseId, meta = {}) {
+    const pid = PurchaseIdSchema.parse(purchaseId)
+    const prev = meta?.previous
+    const next = meta?.next
+    if (!prev || !next) return await this.processPurchaseCreated(pid, meta)
+
+    return await withTransaction(this.db, async () => {
+      // reverse old
+      const occurred_at = meta?.occurred_at || next?.date || new Date().toISOString()
+      const created_by = meta?.actor_user_id ?? null
+
+      const org_id = Number(next.organization_id)
+
+      const items = Array.isArray(prev.items) ? prev.items : []
+      for (const it of items) {
+        const ingredient_id = Number(it.ingredient_id)
+        const qty = Number(it.qty)
+        if (!Number.isFinite(qty)) continue
+
+        const ingRow = await get(
+          this.db,
+          `SELECT unit FROM ingredients WHERE id = ? AND organization_id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [ingredient_id, org_id]
+        )
+        if (!ingRow) throw new Error('Ingredient not found')
+        const default_unit = String(ingRow.unit || '').trim()
+        if (!default_unit) throw new Error('Ingredient default unit is missing')
+
+        let qty_default = qty
+        const fromUnit = it.unit ? String(it.unit).trim() : ''
+        if (fromUnit && fromUnit !== default_unit) {
+          const conv = await get(
+            this.db,
+            `SELECT factor FROM ingredient_unit_conversions
+             WHERE organization_id = ?
+               AND ingredient_id = ?
+               AND from_unit = ?
+               AND to_unit = ?
+               AND (deleted_at IS NULL OR deleted_at = '')`,
+            [org_id, ingredient_id, fromUnit, default_unit]
+          )
+          if (!conv) throw new Error('Unit conversion not found')
+          const factor = Number(conv.factor)
+          if (!Number.isFinite(factor) || factor <= 0) throw new Error('Unit conversion factor invalid')
+          qty_default = qty * factor
+        }
+
+        await applyStockMovement(this.db, {
+          organization_id: org_id,
+          origin_id: Number(prev.origin_id),
+          ingredient_id,
+          qty_delta: -qty_default,
+          unit: default_unit,
+          source_type: 'purchase_in_reversal',
+          source_purchase_id: pid,
+          source_purchase_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+        })
+      }
+
+      // apply new
+      return await this.processPurchaseCreated(pid, { ...meta, occurred_at })
+    })
+  }
+
+  async processPurchaseDeleted(purchaseId, meta = {}) {
+    const pid = PurchaseIdSchema.parse(purchaseId)
+    const prev = meta?.previous
+    if (!prev) return true
+
+    return await withTransaction(this.db, async () => {
+      const occurred_at = meta?.occurred_at || new Date().toISOString()
+      const created_by = meta?.actor_user_id ?? null
+      const org_id = Number(prev.organization_id)
+
+      const items = Array.isArray(prev.items) ? prev.items : []
+      for (const it of items) {
+        const ingredient_id = Number(it.ingredient_id)
+        const qty = Number(it.qty)
+        if (!Number.isFinite(qty)) continue
+
+        const ingRow = await get(
+          this.db,
+          `SELECT unit FROM ingredients WHERE id = ? AND organization_id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+          [ingredient_id, org_id]
+        )
+        if (!ingRow) throw new Error('Ingredient not found')
+        const default_unit = String(ingRow.unit || '').trim()
+        if (!default_unit) throw new Error('Ingredient default unit is missing')
+
+        let qty_default = qty
+        const fromUnit = it.unit ? String(it.unit).trim() : ''
+        if (fromUnit && fromUnit !== default_unit) {
+          const conv = await get(
+            this.db,
+            `SELECT factor FROM ingredient_unit_conversions
+             WHERE organization_id = ?
+               AND ingredient_id = ?
+               AND from_unit = ?
+               AND to_unit = ?
+               AND (deleted_at IS NULL OR deleted_at = '')`,
+            [org_id, ingredient_id, fromUnit, default_unit]
+          )
+          if (!conv) throw new Error('Unit conversion not found')
+          const factor = Number(conv.factor)
+          if (!Number.isFinite(factor) || factor <= 0) throw new Error('Unit conversion factor invalid')
+          qty_default = qty * factor
+        }
+
+        await applyStockMovement(this.db, {
+          organization_id: org_id,
+          origin_id: Number(prev.origin_id),
+          ingredient_id,
+          qty_delta: -qty_default,
+          unit: default_unit,
+          source_type: 'purchase_in_reversal',
+          source_purchase_id: pid,
+          source_purchase_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+        })
+      }
+
+      return true
+    })
   }
 }
 

@@ -9,8 +9,12 @@
 const EventTypes = Object.freeze({
   PurchaseEntryCreated: 'PurchaseEntryCreated',
   PurchaseEntryUpdated: 'PurchaseEntryUpdated',
+  PurchaseEntryDeleted: 'PurchaseEntryDeleted',
   TransferEntryCreated: 'TransferEntryCreated',
   TransferEntryUpdated: 'TransferEntryUpdated',
+  TransferEntryDeleted: 'TransferEntryDeleted',
+
+  StockUpdated: 'StockUpdated',
 })
 
 module.exports = { EventTypes }

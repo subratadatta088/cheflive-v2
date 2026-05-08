@@ -21,6 +21,8 @@ const VALID_SOURCE_TYPES = new Set([
   'transfer_out',
   'transfer_in_reversal',
   'transfer_out_reversal',
+  'purchase_in',
+  'purchase_in_reversal',
 ])
 
 /**
@@ -119,6 +121,8 @@ async function applyStockMovement(db, params) {
     source_type,
     source_transfer_id = null,
     source_transfer_item_id = null,
+    source_purchase_id = null,
+    source_purchase_item_id = null,
     occurred_at,
     created_by = null,
   } = params
@@ -174,8 +178,9 @@ async function applyStockMovement(db, params) {
        organization_id, origin_id, ingredient_id, unit,
        qty_before, qty_delta, qty_after,
        source_type, source_transfer_id, source_transfer_item_id,
+       source_purchase_id, source_purchase_item_id,
        occurred_at, created_at, created_by
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       organization_id,
       origin_id,
@@ -187,6 +192,8 @@ async function applyStockMovement(db, params) {
       source_type,
       source_transfer_id,
       source_transfer_item_id,
+      source_purchase_id,
+      source_purchase_item_id,
       occurred_at,
       now,
       created_by,

@@ -173,7 +173,7 @@ class TransferSqliteDAL extends TransferModel {
 
       if (Array.isArray(payload.items) && payload.items.length) {
         for (const it of payload.items) {
-          const insRes = await run(
+          await run(
             this.db,
             `INSERT INTO transfer_items (
                organization_id,
@@ -194,19 +194,6 @@ class TransferSqliteDAL extends TransferModel {
               now,
             ]
           )
-
-          await applyTransferItemMovement(this.db, {
-            organization_id: payload.organization_id,
-            from_origin_id: payload.from_origin_id ?? null,
-            to_origin_id: payload.to_origin_id ?? null,
-            ingredient_id: it.ingredient_id,
-            qty: it.qty,
-            unit_id: it.unit_id ?? null,
-            source_transfer_id: transferId,
-            source_transfer_item_id: insRes.lastID,
-            occurred_at: payload.transfer_date || now,
-            created_by: null,
-          })
         }
       }
 
@@ -340,59 +327,7 @@ class TransferSqliteDAL extends TransferModel {
           throw new Error('Utilization organization mismatch')
       }
 
-      const oldFromOrigin = existing.from_origin_id ?? null
-      const oldToOrigin = existing.to_origin_id ?? null
-      const newFromOrigin =
-        payload.from_origin_id === undefined ? oldFromOrigin : payload.from_origin_id ?? null
-      const newToOrigin =
-        payload.to_origin_id === undefined ? oldToOrigin : payload.to_origin_id ?? null
-
-      const originsChanged =
-        Number(oldFromOrigin || 0) !== Number(newFromOrigin || 0) ||
-        Number(oldToOrigin || 0) !== Number(newToOrigin || 0)
-
       const updatedAt = new Date().toISOString()
-      const occurredAt = payload.transfer_date || existing.transfer_date || existing.date || updatedAt
-
-      if (originsChanged) {
-        const itemRows = await all(
-          this.db,
-          `SELECT * FROM transfer_items
-           WHERE transfer_id = ?
-             AND (deleted_at IS NULL OR deleted_at = '')`,
-          [tid]
-        )
-
-        for (const it of itemRows) {
-          await applyTransferItemMovement(this.db, {
-            organization_id: Number(existing.organization_id),
-            from_origin_id: oldFromOrigin || null,
-            to_origin_id: oldToOrigin || null,
-            ingredient_id: Number(it.ingredient_id),
-            qty: Number(it.qty),
-            unit_id: it.unit_id ?? null,
-            source_transfer_id: tid,
-            source_transfer_item_id: Number(it.id),
-            occurred_at: occurredAt,
-            created_by: null,
-            reversal: true,
-          })
-
-          await applyTransferItemMovement(this.db, {
-            organization_id: Number(existing.organization_id),
-            from_origin_id: newFromOrigin || null,
-            to_origin_id: newToOrigin || null,
-            ingredient_id: Number(it.ingredient_id),
-            qty: Number(it.qty),
-            unit_id: it.unit_id ?? null,
-            source_transfer_id: tid,
-            source_transfer_item_id: Number(it.id),
-            occurred_at: occurredAt,
-            created_by: null,
-            reversal: false,
-          })
-        }
-      }
 
       const fields = []
       const params = []
@@ -442,32 +377,6 @@ class TransferSqliteDAL extends TransferModel {
       if (!existing) return false
       if (existing.deleted_at) return true
 
-      const itemRows = await all(
-        this.db,
-        `SELECT * FROM transfer_items
-         WHERE transfer_id = ?
-           AND (deleted_at IS NULL OR deleted_at = '')`,
-        [tid]
-      )
-
-      const occurredAt = existing.transfer_date || existing.date || now
-
-      for (const it of itemRows) {
-        await applyTransferItemMovement(this.db, {
-          organization_id: Number(existing.organization_id),
-          from_origin_id: existing.from_origin_id ?? null,
-          to_origin_id: existing.to_origin_id ?? null,
-          ingredient_id: Number(it.ingredient_id),
-          qty: Number(it.qty),
-          unit_id: it.unit_id ?? null,
-          source_transfer_id: tid,
-          source_transfer_item_id: Number(it.id),
-          occurred_at: occurredAt,
-          created_by: null,
-          reversal: true,
-        })
-      }
-
       await run(this.db, `UPDATE transfers SET deleted_at = ?, updated_at = ? WHERE id = ?`, [
         now,
         now,
@@ -478,6 +387,108 @@ class TransferSqliteDAL extends TransferModel {
         `UPDATE transfer_items SET deleted_at = ?, updated_at = ? WHERE transfer_id = ?`,
         [now, now, tid]
       )
+      return true
+    })
+  }
+
+  async processTransferCreated(transferId, meta = {}) {
+    const tid = TransferIdSchema.parse(transferId)
+    return await withTransaction(this.db, async () => {
+      const transfer = await this.getById(tid)
+      if (!transfer) throw new Error('Transfer not found')
+      if (transfer.deleted_at) return true
+
+      const occurred_at = meta?.occurred_at || transfer.transfer_date || new Date().toISOString()
+      const created_by = meta?.actor_user_id ?? null
+
+      const items = Array.isArray(transfer.items) ? transfer.items : []
+      for (const it of items) {
+        await applyTransferItemMovement(this.db, {
+          organization_id: Number(transfer.organization_id),
+          from_origin_id: transfer.from_origin_id ?? null,
+          to_origin_id: transfer.to_origin_id ?? null,
+          ingredient_id: Number(it.ingredient_id),
+          qty: Number(it.qty),
+          unit_id: it.unit_id ?? null,
+          source_transfer_id: tid,
+          source_transfer_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+          reversal: false,
+        })
+      }
+      return true
+    })
+  }
+
+  async processTransferUpdated(transferId, meta = {}) {
+    const tid = TransferIdSchema.parse(transferId)
+    const prev = meta?.previous
+    const next = meta?.next
+    if (!prev || !next) return await this.processTransferCreated(tid, meta)
+
+    return await withTransaction(this.db, async () => {
+      const occurred_at = meta?.occurred_at || next.transfer_date || new Date().toISOString()
+      const created_by = meta?.actor_user_id ?? null
+      const items = Array.isArray(next.items) ? next.items : []
+
+      for (const it of items) {
+        await applyTransferItemMovement(this.db, {
+          organization_id: Number(next.organization_id),
+          from_origin_id: prev.from_origin_id ?? null,
+          to_origin_id: prev.to_origin_id ?? null,
+          ingredient_id: Number(it.ingredient_id),
+          qty: Number(it.qty),
+          unit_id: it.unit_id ?? null,
+          source_transfer_id: tid,
+          source_transfer_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+          reversal: true,
+        })
+        await applyTransferItemMovement(this.db, {
+          organization_id: Number(next.organization_id),
+          from_origin_id: next.from_origin_id ?? null,
+          to_origin_id: next.to_origin_id ?? null,
+          ingredient_id: Number(it.ingredient_id),
+          qty: Number(it.qty),
+          unit_id: it.unit_id ?? null,
+          source_transfer_id: tid,
+          source_transfer_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+          reversal: false,
+        })
+      }
+      return true
+    })
+  }
+
+  async processTransferDeleted(transferId, meta = {}) {
+    const tid = TransferIdSchema.parse(transferId)
+    const prev = meta?.previous
+    if (!prev) return true
+
+    return await withTransaction(this.db, async () => {
+      const occurred_at = meta?.occurred_at || new Date().toISOString()
+      const created_by = meta?.actor_user_id ?? null
+      const items = Array.isArray(prev.items) ? prev.items : []
+
+      for (const it of items) {
+        await applyTransferItemMovement(this.db, {
+          organization_id: Number(prev.organization_id),
+          from_origin_id: prev.from_origin_id ?? null,
+          to_origin_id: prev.to_origin_id ?? null,
+          ingredient_id: Number(it.ingredient_id),
+          qty: Number(it.qty),
+          unit_id: it.unit_id ?? null,
+          source_transfer_id: tid,
+          source_transfer_item_id: Number(it.id) || null,
+          occurred_at,
+          created_by,
+          reversal: true,
+        })
+      }
       return true
     })
   }

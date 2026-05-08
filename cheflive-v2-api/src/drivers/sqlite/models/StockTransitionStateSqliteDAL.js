@@ -15,6 +15,40 @@ function get(db, sql, params = []) {
   })
 }
 
+function run(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) return reject(err)
+      resolve({ lastID: this.lastID, changes: this.changes })
+    })
+  })
+}
+
+function exec(db, sql) {
+  return new Promise((resolve, reject) => {
+    db.exec(sql, (err) => {
+      if (err) return reject(err)
+      resolve()
+    })
+  })
+}
+
+async function withTransaction(db, fn) {
+  await exec(db, 'BEGIN')
+  try {
+    const out = await fn()
+    await exec(db, 'COMMIT')
+    return out
+  } catch (e) {
+    try {
+      await exec(db, 'ROLLBACK')
+    } catch {
+      // ignore
+    }
+    throw e
+  }
+}
+
 function all(db, sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
@@ -85,6 +119,44 @@ class StockTransitionStateSqliteDAL extends StockTransitionStateModel {
     )
 
     return rows.map(normalizeRow)
+  }
+
+  async create(data) {
+    const payload = StockTransitionStateRowSchema.omit({ id: true }).partial({ created_at: true }).parse(data)
+    const now = new Date().toISOString()
+
+    return await withTransaction(this.db, async () => {
+      const result = await run(
+        this.db,
+        `INSERT INTO stock_transition_states (
+          organization_id, origin_id, ingredient_id, unit,
+          qty_before, qty_delta, qty_after,
+          source_type,
+          source_transfer_id, source_transfer_item_id,
+          source_purchase_id, source_purchase_item_id,
+          occurred_at, created_at, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          payload.organization_id,
+          payload.origin_id,
+          payload.ingredient_id,
+          payload.unit,
+          payload.qty_before,
+          payload.qty_delta,
+          payload.qty_after,
+          payload.source_type,
+          payload.source_transfer_id ?? null,
+          payload.source_transfer_item_id ?? null,
+          payload.source_purchase_id ?? null,
+          payload.source_purchase_item_id ?? null,
+          payload.occurred_at,
+          payload.created_at ?? now,
+          payload.created_by ?? null,
+        ]
+      )
+
+      return await this.getById(result.lastID)
+    })
   }
 }
 

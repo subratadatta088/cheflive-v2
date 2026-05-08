@@ -8,6 +8,8 @@ const SourceTypeSchema = z.enum([
   'transfer_out',
   'transfer_in_reversal',
   'transfer_out_reversal',
+  'purchase_in',
+  'purchase_in_reversal',
 ])
 
 const StockTransitionStateRowSchema = z.object({
@@ -22,6 +24,8 @@ const StockTransitionStateRowSchema = z.object({
   source_type: SourceTypeSchema,
   source_transfer_id: z.number().int().positive().optional().nullable(),
   source_transfer_item_id: z.number().int().positive().optional().nullable(),
+  source_purchase_id: z.number().int().positive().optional().nullable(),
+  source_purchase_item_id: z.number().int().positive().optional().nullable(),
   occurred_at: z.string(),
   created_at: z.string().optional().nullable(),
   created_by: z.number().int().positive().optional().nullable(),

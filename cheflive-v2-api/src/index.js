@@ -5,6 +5,7 @@ const fileUpload = require('express-fileupload')
 const { db } = require('./db')
 const { migrate } = require('./db/migrate')
 const { v1Router } = require('./routes/v1')
+const { registerHandlers } = require('./handlers')
 
 
 const app = express()
@@ -123,6 +124,7 @@ const PORT = process.env.PORT || 5000
 
 async function start() {
   await migrate(db())
+  await registerHandlers()
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
   })
