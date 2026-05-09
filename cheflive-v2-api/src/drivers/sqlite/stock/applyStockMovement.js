@@ -26,25 +26,20 @@ const VALID_SOURCE_TYPES = new Set([
 ])
 
 /**
- * Convert qty from a transfer-item-supplied unit into the ingredient's default unit
- * (`ingredients.unit`). Behavior:
- *  - If `unit_id` is null/undefined, the qty is assumed to already be in the default
- *    unit; it is returned unchanged.
- *  - If `unit_id` is set, it is treated as the row id in `ingredient_unit_conversions`
- *    that defines the conversion. The conversion row must reference the same
- *    organization + ingredient and must involve the ingredient's default unit on one
- *    side; otherwise an error is thrown.
+ * Convert qty expressed in `line_unit` into the ingredient's default unit (`ingredients.unit`).
+ * If `line_unit` is empty or equals the default unit, qty is unchanged.
+ * Otherwise resolves `ingredient_unit_conversions` by matching unit strings (same idea as purchases).
  *
  * @param {import('sqlite3').Database} db Caller-supplied connection (joins existing txn).
  * @param {{
  *   organization_id: number,
  *   ingredient_id: number,
  *   qty: number,
- *   unit_id?: number|null,
+ *   line_unit?: string|null,
  * }} params
  * @returns {Promise<{ qty_default: number, default_unit: string }>}
  */
-async function convertToDefaultUnit(db, { organization_id, ingredient_id, qty, unit_id }) {
+async function convertToDefaultUnit(db, { organization_id, ingredient_id, qty, line_unit }) {
   const ingRow = await get(
     db,
     `SELECT unit FROM ingredients
@@ -60,35 +55,44 @@ async function convertToDefaultUnit(db, { organization_id, ingredient_id, qty, u
   const numQty = Number(qty)
   if (!Number.isFinite(numQty)) throw new Error('Invalid qty for stock movement')
 
-  if (unit_id === undefined || unit_id === null) {
+  const u = String(line_unit ?? '').trim()
+  if (!u || u === default_unit) {
     return { qty_default: numQty, default_unit }
   }
 
-  const conv = await get(
+  const forward = await get(
     db,
-    `SELECT from_unit, to_unit, factor FROM ingredient_unit_conversions
-     WHERE id = ?
-       AND organization_id = ?
+    `SELECT factor FROM ingredient_unit_conversions
+     WHERE organization_id = ?
        AND ingredient_id = ?
+       AND from_unit = ?
+       AND to_unit = ?
        AND (deleted_at IS NULL OR deleted_at = '')`,
-    [unit_id, organization_id, ingredient_id]
+    [organization_id, ingredient_id, u, default_unit]
   )
-  if (!conv) throw new Error('Unit conversion not found')
-
-  const factor = Number(conv.factor)
-  if (!Number.isFinite(factor) || factor <= 0) {
-    throw new Error('Unit conversion factor invalid')
-  }
-
-  // qty is provided in `from_unit`; converted qty in `to_unit` = qty * factor.
-  // Surface the value expressed in the ingredient's default unit.
-  if (conv.to_unit === default_unit) {
+  if (forward) {
+    const factor = Number(forward.factor)
+    if (!Number.isFinite(factor) || factor <= 0) throw new Error('Unit conversion factor invalid')
     return { qty_default: numQty * factor, default_unit }
   }
-  if (conv.from_unit === default_unit) {
-    return { qty_default: numQty, default_unit }
+
+  const backward = await get(
+    db,
+    `SELECT factor FROM ingredient_unit_conversions
+     WHERE organization_id = ?
+       AND ingredient_id = ?
+       AND from_unit = ?
+       AND to_unit = ?
+       AND (deleted_at IS NULL OR deleted_at = '')`,
+    [organization_id, ingredient_id, default_unit, u]
+  )
+  if (backward) {
+    const factor = Number(backward.factor)
+    if (!Number.isFinite(factor) || factor <= 0) throw new Error('Unit conversion factor invalid')
+    return { qty_default: numQty / factor, default_unit }
   }
-  throw new Error('Unit conversion does not match ingredient default unit')
+
+  throw new Error('Unit conversion not found')
 }
 
 /**
@@ -165,9 +169,9 @@ async function applyStockMovement(db, params) {
     const ins = await run(
       db,
       `INSERT INTO running_stock (
-         organization_id, origin_id, ingredient_id, qty, unit, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [organization_id, origin_id, ingredient_id, qty_after, unit, now, now]
+         organization_id, origin_id, ingredient_id, qty, unit, created_by, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [organization_id, origin_id, ingredient_id, qty_after, unit, created_by, now, now]
     )
     running_stock_id = ins.lastID
   }
@@ -214,7 +218,7 @@ async function applyStockMovement(db, params) {
  *   to_origin_id?: number|null,
  *   ingredient_id: number,
  *   qty: number,
- *   unit_id?: number|null,
+ *   unit: string,
  *   source_transfer_id?: number|null,
  *   source_transfer_item_id?: number|null,
  *   occurred_at: string,
@@ -229,7 +233,7 @@ async function applyTransferItemMovement(db, params) {
     to_origin_id,
     ingredient_id,
     qty,
-    unit_id,
+    unit: line_unit,
     source_transfer_id = null,
     source_transfer_item_id = null,
     occurred_at,
@@ -241,7 +245,7 @@ async function applyTransferItemMovement(db, params) {
     organization_id,
     ingredient_id,
     qty,
-    unit_id,
+    line_unit,
   })
 
   if (to_origin_id) {

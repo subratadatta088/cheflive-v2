@@ -1,17 +1,33 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useFormik } from 'formik'
+import { z } from 'zod'
+import { RotateCcw, Save } from 'lucide-react'
 import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { Button } from '../../components/Button.jsx'
 import { LineItemsGrid } from '../../components/LineItemsGrid.jsx'
 import { AddOriginButton } from '../../components/AddOriginButton.jsx'
 import { listOrigins } from '../../apis/origin.js'
-import { listIngredients, listIngredientUnitConversions } from '../../apis/ingredient.js'
+import {
+  getIngredientRunningStockDefault,
+  listIngredients,
+  listIngredientUnitConversions,
+} from '../../apis/ingredient.js'
+import { createPurchase } from '../../apis/purchase.js'
 import { MultiSelect } from '../../components/MultiSelect.jsx'
+import { useToast } from '../../components/Toaster.jsx'
+import { usePurchaseCreateShortcuts } from '../../shortcuts/usePurchaseCreateShortcuts.js'
+import {
+  blurPurchaseLineField,
+  PURCHASE_FIELD_INGREDIENT_ID,
+  PURCHASE_FIELD_ITEM_CODE,
+} from '../../shortcuts/purchaseCreateDom.js'
 
 function newRow() {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     item_code: '',
     ingredient_id: '',
+    ingredient_label: '',
     qty: '',
     unit: '',
     unitPrice: '',
@@ -19,7 +35,90 @@ function newRow() {
     unitConversions: null,
     baseUnit: '',
     basePrice: '',
+    defaultStockQtyStr: '',
+    defaultStockUnit: '',
+    defaultStockLoading: false,
   }
+}
+
+/** @param {unknown} qty @param {unknown} unit @returns {{ qtyStr: string, unitStr: string } | null} */
+function parseDefaultStockParts(qty, unit) {
+  const u = unit === undefined || unit === null ? '' : String(unit).trim()
+  const raw = qty === undefined || qty === null ? NaN : Number(qty)
+  if (!Number.isFinite(raw)) return null
+  const qStr = raw % 1 === 0 ? String(raw) : String(raw)
+  return { qtyStr: qStr, unitStr: u }
+}
+
+/** Local calendar date for `<input type="date" />` (YYYY-MM-DD). */
+function todayLocalDate() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function zodToFormikErrors(zodError) {
+  /** @type {Record<string, string>} */
+  const out = {}
+  for (const issue of zodError.issues ?? []) {
+    const key = issue.path?.[0]
+    if (!key) continue
+    if (out[key]) continue
+    out[String(key)] = issue.message
+  }
+  return out
+}
+
+const PurchaseFormSchema = z
+  .object({
+    purchaseDate: z.string().min(1, 'Please pick a purchase date.'),
+    originId: z.string().refine(
+      (s) => {
+        const n = Number(s)
+        return Number.isFinite(n) && n > 0
+      },
+      { message: 'Please select a Received To origin.' },
+    ),
+    transferTo: z.string().optional(),
+    notes: z.string().optional(),
+    rows: z.array(z.any()),
+  })
+  .superRefine((data, ctx) => {
+    for (const r of data.rows) {
+      const ingId = Number(r?.ingredient_id)
+      const qty = parseFloat(String(r?.qty ?? '').replace(',', '.'))
+      if (!Number.isFinite(ingId) || ingId <= 0) continue
+      if (!Number.isFinite(qty) || qty <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Each line with an item needs a positive qty.',
+          path: ['items'],
+        })
+        return
+      }
+    }
+
+    const hasLine = data.rows.some((r) => {
+      const ingId = Number(r?.ingredient_id)
+      const qty = parseFloat(String(r?.qty ?? '').replace(',', '.'))
+      return Number.isFinite(ingId) && ingId > 0 && Number.isFinite(qty) && qty > 0
+    })
+    if (!hasLine) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Add at least one line item with an item and qty.',
+        path: ['items'],
+      })
+    }
+  })
+
+function buildIngredientLabel(ing) {
+  if (!ing) return ''
+  const name = ing?.name ? String(ing.name) : 'Unnamed'
+  const code = ing?.item_code === null || ing?.item_code === undefined ? '' : String(ing.item_code)
+  return code ? `${name} (${code})` : name
 }
 
 /** @param {ReturnType<typeof newRow>} row */
@@ -30,14 +129,128 @@ function formatLineTotal(row) {
   return t ? t.toFixed(2) : ''
 }
 
+/** @param {{ id: unknown, is_default?: boolean }[]} originOptions */
+function buildFreshPurchaseValues(originOptions) {
+  const nextOrigin =
+    originOptions.find((o) => o.is_default && o.id)?.id ??
+    originOptions.find((o) => o.id)?.id ??
+    ''
+  return {
+    purchaseDate: todayLocalDate(),
+    originId: nextOrigin ? String(nextOrigin) : '',
+    transferTo: '',
+    notes: '',
+    rows: [newRow()],
+  }
+}
+
 export function PurchasesCreatePage() {
-  const [transferTo, setTransferTo] = useState('')
-  const [purchaseDate, setPurchaseDate] = useState('')
-  const [originId, setOriginId] = useState('')
+  const { showToast } = useToast()
   const [originOptions, setOriginOptions] = useState([])
-  const [notes, setNotes] = useState('')
-  const [vendor, setVendor] = useState('')
-  const [rows, setRows] = useState(() => [newRow()])
+  /** Full Formik snapshot (async origins effect). */
+  const valuesRef = useRef(null)
+  /**
+   * Mirrors `rows` synchronously so chained `onRowsChange(prev => …)` updates work.
+   * Formik `setFieldValue` does not queue functional updaters like React `setState`.
+   */
+  const rowsRef = useRef(null)
+  const isSubmittingRef = useRef(false)
+
+  const formik = useFormik({
+    initialValues: {
+      purchaseDate: todayLocalDate(),
+      originId: '',
+      transferTo: '',
+      notes: '',
+      rows: [newRow()],
+    },
+    validateOnChange: false,
+    validateOnBlur: false,
+    validateOnMount: false,
+    validate: (values) => {
+      const res = PurchaseFormSchema.safeParse(values)
+      if (res.success) return {}
+      return zodToFormikErrors(res.error)
+    },
+    onSubmit: async (values, helpers) => {
+      helpers.setStatus(undefined)
+      const originIdNum = Number(values.originId)
+      const items = []
+      for (const r of values.rows) {
+        const ingId = Number(r?.ingredient_id)
+        const qty = parseFloat(String(r?.qty ?? '').replace(',', '.'))
+        if (!Number.isFinite(ingId) || ingId <= 0) continue
+        if (!Number.isFinite(qty) || qty <= 0) continue
+
+        const item = { ingredient_id: ingId, qty }
+
+        const unit = String(r?.unit ?? '').trim()
+        if (unit) item.unit = unit
+
+        const unitPrice = parseFloat(String(r?.unitPrice ?? '').replace(',', '.'))
+        if (Number.isFinite(unitPrice) && unitPrice >= 0) item.unit_price = unitPrice
+
+        items.push(item)
+      }
+
+      const payload = {
+        origin_id: originIdNum,
+        date: values.purchaseDate,
+        items,
+      }
+
+      const note = String(values.notes ?? '').trim()
+      if (note) payload.note = note
+
+      const transferToNum = values.transferTo ? Number(values.transferTo) : NaN
+      if (Number.isFinite(transferToNum) && transferToNum > 0) {
+        payload.transfer_to = transferToNum
+      }
+
+      helpers.setSubmitting(true)
+      try {
+        const data = await createPurchase(payload)
+        console.info('[Purchase created]', data)
+        helpers.resetForm({ values: buildFreshPurchaseValues(originOptions) })
+        showToast({ text: 'Purchase saved successfully.', theme: 'success', duration: 5000 })
+      } catch (e) {
+        const apiMsg = e?.response?.data?.error || e?.message || 'Failed to save purchase.'
+        console.error('[Purchase save failed]', e)
+        helpers.setStatus(String(apiMsg))
+      } finally {
+        helpers.setSubmitting(false)
+      }
+    },
+  })
+
+  valuesRef.current = formik.values
+  rowsRef.current = formik.values.rows
+  isSubmittingRef.current = formik.isSubmitting
+
+  function setRows(updater) {
+    const prev = Array.isArray(rowsRef.current) ? rowsRef.current : formik.values.rows ?? []
+    const next = typeof updater === 'function' ? updater(prev) : updater
+    rowsRef.current = next
+    formik.setFieldValue('rows', next)
+  }
+
+  function clearFieldError(key) {
+    formik.setFieldError(key, undefined)
+  }
+
+  const handleResetPurchaseForm = useCallback(() => {
+    formik.resetForm({ values: buildFreshPurchaseValues(originOptions) })
+    formik.setStatus(undefined)
+  }, [originOptions, formik.resetForm, formik.setStatus])
+
+  usePurchaseCreateShortcuts({
+    rowsRef,
+    setRows,
+    newRow,
+    clearFieldError,
+    isSubmittingRef,
+  })
+
   const [ingredientOptions, setIngredientOptions] = useState(() => /** @type {{ value: string, label: string }[]} */ ([]))
   const [ingredientsById, setIngredientsById] = useState(
     () => /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */ ({}),
@@ -47,41 +260,98 @@ export function PurchasesCreatePage() {
   )
   const [ingredientSearch, setIngredientSearch] = useState('')
 
-  async function loadConversionsIntoRow(rowId, ingredientId) {
-    const ingKey = ingredientId ? String(ingredientId) : ''
-    const rowKey = String(rowId)
-    if (!ingKey) return
+  const loadConversionsIntoRow = useCallback(
+    async (rowId, ingredientId) => {
+      const ingKey = ingredientId ? String(ingredientId) : ''
+      const rowKey = String(rowId)
+      if (!ingKey) return
 
-    try {
-      const data = await listIngredientUnitConversions(ingKey)
-      const items = Array.isArray(data?.items) ? data.items : []
+      try {
+        const data = await listIngredientUnitConversions(ingKey)
+        const items = Array.isArray(data?.items) ? data.items : []
 
-      const baseUnit = ingredientsById?.[ingKey]?.unit ? String(ingredientsById[ingKey].unit) : ''
-      const units = []
-      if (baseUnit) units.push(baseUnit)
-      for (const c of items) {
-        const from = c?.from_unit ? String(c.from_unit) : ''
-        const to = c?.to_unit ? String(c.to_unit) : ''
-        if (from) units.push(from)
-        if (to) units.push(to)
-      }
-      const uniq = [...new Set(units)]
-      const opts = uniq.length ? uniq.map((u) => ({ value: u, label: u })) : null
+        const baseUnit = ingredientsById?.[ingKey]?.unit ? String(ingredientsById[ingKey].unit) : ''
+        const units = []
+        if (baseUnit) units.push(baseUnit)
+        for (const c of items) {
+          const from = c?.from_unit ? String(c.from_unit) : ''
+          const to = c?.to_unit ? String(c.to_unit) : ''
+          if (from) units.push(from)
+          if (to) units.push(to)
+        }
+        const uniq = [...new Set(units)]
+        const opts = uniq.length ? uniq.map((u) => ({ value: u, label: u })) : null
 
-      setRows((prev) =>
-        prev.map((r) => {
+        const prev = Array.isArray(rowsRef.current) ? rowsRef.current : formik.values.rows ?? []
+        const nextRows = prev.map((r) => {
           if (String(r.id) !== rowKey) return r
-          // If user already changed ingredient since request started, ignore.
           if (String(r.ingredient_id ?? '') !== ingKey) return r
           const nextUnit = baseUnit || String(r.unit ?? '')
           return { ...r, unitOptions: opts, unitConversions: items, unit: nextUnit }
-        }),
+        })
+        rowsRef.current = nextRows
+        formik.setFieldValue('rows', nextRows)
+      } catch (e) {
+        console.error('[Unit conversions load failed]', e)
+      }
+    },
+    [ingredientsById, formik.setFieldValue],
+  )
+
+  const loadDefaultStockIntoRow = useCallback(
+    async (rowId, ingredientId) => {
+      const rowKey = String(rowId)
+      const ingKey = ingredientId ? String(ingredientId) : ''
+
+      const patchRows = (mapper) => {
+        const prev = Array.isArray(rowsRef.current) ? rowsRef.current : []
+        const nextRows = prev.map(mapper)
+        rowsRef.current = nextRows
+        formik.setFieldValue('rows', nextRows)
+      }
+
+      if (!ingKey) {
+        patchRows((r) =>
+          String(r.id) === rowKey
+            ? { ...r, defaultStockQtyStr: '', defaultStockUnit: '', defaultStockLoading: false }
+            : r,
+        )
+        return
+      }
+
+      patchRows((r) =>
+        String(r.id) === rowKey && String(r.ingredient_id ?? '') === ingKey
+          ? { ...r, defaultStockLoading: true, defaultStockQtyStr: '', defaultStockUnit: '' }
+          : r,
       )
-    } catch (e) {
-      // Non-fatal: leave unitOptions empty (no fake fallback)
-      console.error('[Unit conversions load failed]', e)
-    }
-  }
+
+      try {
+        const data = await getIngredientRunningStockDefault(ingKey)
+        const parts = parseDefaultStockParts(data?.qty, data?.unit)
+        patchRows((r) => {
+          if (String(r.id) !== rowKey) return r
+          if (String(r.ingredient_id ?? '') !== ingKey) return r
+          if (!parts) {
+            return { ...r, defaultStockQtyStr: '—', defaultStockUnit: '', defaultStockLoading: false }
+          }
+          return {
+            ...r,
+            defaultStockQtyStr: parts.qtyStr,
+            defaultStockUnit: parts.unitStr,
+            defaultStockLoading: false,
+          }
+        })
+      } catch (e) {
+        console.error('[Default stock load failed]', e)
+        patchRows((r) => {
+          if (String(r.id) !== rowKey) return r
+          if (String(r.ingredient_id ?? '') !== ingKey) return r
+          return { ...r, defaultStockQtyStr: '—', defaultStockUnit: '', defaultStockLoading: false }
+        })
+      }
+    },
+    [formik.setFieldValue],
+  )
 
   function applyUnitPriceForRow(row, nextUnit) {
     const baseUnit = String(row?.baseUnit ?? row?.unit ?? '').trim()
@@ -123,12 +393,12 @@ export function PurchasesCreatePage() {
         }))
         setOriginOptions(opts)
 
-        setOriginId((prev) => {
-          if (prev) return prev
-          const def = opts.find((o) => o.is_default && o.id)
-          const first = opts.find((o) => o.id)
-          return def?.id ? String(def.id) : first?.id ? String(first.id) : ''
-        })
+        const def = opts.find((o) => o.is_default && o.id)
+        const first = opts.find((o) => o.id)
+        const pick = def?.id ? String(def.id) : first?.id ? String(first.id) : ''
+        if (pick && !valuesRef.current?.originId) {
+          formik.setFieldValue('originId', pick)
+        }
       } catch (e) {
         if (cancelled) return
         console.error('[Origins load failed]', e)
@@ -139,6 +409,8 @@ export function PurchasesCreatePage() {
     return () => {
       cancelled = true
     }
+    // Origins once on mount; default origin applied only if still empty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional single fetch
   }, [])
 
   useEffect(() => {
@@ -153,37 +425,39 @@ export function PurchasesCreatePage() {
           })
           if (cancelled) return
 
-          const byId = {}
-          const byCode = {}
+          const fresh = []
+          const byIdDelta = {}
+          const byCodeDelta = {}
           for (const it of Array.isArray(items) ? items : []) {
             const id = Number(it?.id)
             if (!Number.isFinite(id) || id <= 0) continue
-            const row = {
+            const ing = {
               id,
               item_code: it?.item_code ?? null,
               name: it?.name ?? '',
               unit: it?.unit ?? '',
               base_price: it?.base_price ?? null,
             }
-            byId[String(id)] = row
-
-            const code = row.item_code === null || row.item_code === undefined ? '' : String(row.item_code)
-            if (code) byCode[code] = row
+            byIdDelta[String(id)] = ing
+            const code = ing.item_code === null || ing.item_code === undefined ? '' : String(ing.item_code)
+            if (code) byCodeDelta[code] = ing
+            fresh.push(ing)
           }
 
-          const opts = Object.values(byId).map((x) => ({
+          const opts = fresh.map((x) => ({
             value: String(x.id),
-            label: `${x.name || 'Unnamed'}${x.item_code ? ` (${x.item_code})` : ''}`,
+            label: buildIngredientLabel(x),
           }))
 
-          setIngredientsById(byId)
-          setIngredientsByItemCode(byCode)
+          // Accumulate caches so previously-selected rows can still resolve their label
+          // and unit/base_price metadata, even if a later search no longer returns them.
+          setIngredientsById((prev) => ({ ...prev, ...byIdDelta }))
+          setIngredientsByItemCode((prev) => ({ ...prev, ...byCodeDelta }))
+          // Dropdown menu reflects only the current search result.
           setIngredientOptions(opts)
         } catch (e) {
           if (cancelled) return
           console.error('[Ingredients load failed]', e)
-          setIngredientsById({})
-          setIngredientsByItemCode({})
           setIngredientOptions([])
         }
       })()
@@ -199,13 +473,15 @@ export function PurchasesCreatePage() {
     () => [
       {
         key: 'item_code',
-        header: 'Item code',
+        header: 'BarCode',
         kind: 'custom',
-        thClassName: 'w-80',
+        thClassName: 'w-50',
         render: ({ row, updateCell }) => {
           const value = row?.item_code === undefined || row?.item_code === null ? '' : String(row.item_code)
           return (
             <input
+              data-purchase-line-row={row.id}
+              data-purchase-line-field={PURCHASE_FIELD_ITEM_CODE}
               value={value}
               onChange={(e) => {
                 const next = String(e.target.value ?? '').replace(/[^\d]/g, '')
@@ -213,15 +489,18 @@ export function PurchasesCreatePage() {
 
                 if (!next) {
                   updateCell('ingredient_id', '')
+                  updateCell('ingredient_label', '')
                   updateCell('unit', '')
                   updateCell('unitOptions', null)
                   updateCell('unitPrice', '')
+                  void loadDefaultStockIntoRow(row.id, '')
                   return
                 }
 
                 const ing = ingredientsByItemCode[next]
                 if (ing?.id) {
                   updateCell('ingredient_id', String(ing.id))
+                  updateCell('ingredient_label', buildIngredientLabel(ing))
                   updateCell('unit', ing?.unit ? String(ing.unit) : '')
 
                   // Seed options with base unit immediately; conversions load async.
@@ -239,6 +518,8 @@ export function PurchasesCreatePage() {
                   if (!hasPrice && basePrice !== '') updateCell('unitPrice', basePrice)
 
                   void loadConversionsIntoRow(row.id, ing.id)
+                  void loadDefaultStockIntoRow(row.id, ing.id)
+                  queueMicrotask(() => blurPurchaseLineField(row.id, PURCHASE_FIELD_ITEM_CODE))
                 }
               }}
               inputMode="numeric"
@@ -253,14 +534,34 @@ export function PurchasesCreatePage() {
         key: 'ingredient_id',
         header: 'Item',
         kind: 'custom',
-        thClassName: 'min-w-[260px]',
+        thClassName: 'w-80',
         align: 'left',
         render: ({ row, updateCell }) => {
           const selected = row?.ingredient_id ? String(row.ingredient_id) : ''
+
+          // Each row needs an options list that contains its own selection,
+          // even when the global search has filtered it out (or returned no
+          // matches). Otherwise react-select can't find the option and the
+          // label disappears from this row when another row is being searched.
+          let optionsForRow = ingredientOptions
+          if (selected && !ingredientOptions.some((o) => String(o.value) === selected)) {
+            const cached = ingredientsById[selected]
+            const fallbackLabel =
+              row?.ingredient_label && String(row.ingredient_label).trim()
+                ? String(row.ingredient_label)
+                : buildIngredientLabel(cached) || `#${selected}`
+            optionsForRow = [{ value: selected, label: fallbackLabel }, ...ingredientOptions]
+          }
+
           return (
-            <div className="px-2 py-0.5">
+            <div
+              className="h-9 w-full"
+              data-purchase-line-row={row.id}
+              data-purchase-line-field={PURCHASE_FIELD_INGREDIENT_ID}
+            >
               <MultiSelect
-                options={ingredientOptions}
+                bare
+                options={optionsForRow}
                 value={selected}
                 placeholder="Select item…"
                 isMulti={false}
@@ -272,6 +573,7 @@ export function PurchasesCreatePage() {
                   const ing = picked ? ingredientsById[picked] : null
                   const code = ing?.item_code === null || ing?.item_code === undefined ? '' : String(ing.item_code)
                   updateCell('item_code', code)
+                  updateCell('ingredient_label', picked ? buildIngredientLabel(ing) : '')
                   updateCell('unit', ing?.unit ? String(ing.unit) : '')
 
                   const baseUnit = ing?.unit ? String(ing.unit) : ''
@@ -287,15 +589,21 @@ export function PurchasesCreatePage() {
                   const hasPrice = String(row?.unitPrice ?? '').trim() !== ''
                   if (ing?.id && !hasPrice && basePrice !== '') updateCell('unitPrice', basePrice)
 
-                  if (ing?.id) void loadConversionsIntoRow(row.id, ing.id)
+                  if (ing?.id) {
+                    void loadConversionsIntoRow(row.id, ing.id)
+                    void loadDefaultStockIntoRow(row.id, ing.id)
+                  }
                   if (!ing?.id) {
+                    updateCell('ingredient_label', '')
                     updateCell('unit', '')
                     updateCell('unitOptions', null)
                     updateCell('unitConversions', null)
                     updateCell('baseUnit', '')
                     updateCell('basePrice', '')
                     updateCell('unitPrice', '')
+                    void loadDefaultStockIntoRow(row.id, '')
                   }
+                  queueMicrotask(() => blurPurchaseLineField(row.id, PURCHASE_FIELD_INGREDIENT_ID))
                 }}
               />
             </div>
@@ -307,7 +615,7 @@ export function PurchasesCreatePage() {
         key: 'unit',
         header: 'Unit',
         kind: 'custom',
-        thClassName: 'w-28',
+        thClassName: 'w-40',
         render: ({ row, updateCell }) => {
           const opts = Array.isArray(row?.unitOptions) && row.unitOptions.length ? row.unitOptions : []
           const value = row?.unit === undefined || row?.unit === null ? '' : String(row.unit)
@@ -343,17 +651,64 @@ export function PurchasesCreatePage() {
         thClassName: 'w-32',
         compute: (row) => formatLineTotal(row),
       },
+      {
+        key: 'defaultStockQtyStr',
+        header: 'Current Stock',
+        kind: 'custom',
+        thClassName: 'w-50',
+        render: ({ row }) => {
+          if (!row?.ingredient_id) return <div className="h-9 w-full" />
+          const wrap = (children) => (
+            <div className="flex h-9 min-h-9 w-full items-center bg-neutral-100 px-2 text-sm tabular-nums">
+              {children}
+            </div>
+          )
+          if (row?.defaultStockLoading) {
+            return wrap(<span className="text-slate-400">…</span>)
+          }
+          const qtyStr =
+            row?.defaultStockQtyStr === undefined || row?.defaultStockQtyStr === null
+              ? ''
+              : String(row.defaultStockQtyStr)
+          const unitRaw =
+            row?.defaultStockUnit === undefined || row?.defaultStockUnit === null
+              ? ''
+              : String(row.defaultStockUnit).trim()
+          if (!qtyStr && !unitRaw) return wrap(null)
+          if (qtyStr === '—') {
+            return wrap(<span className="font-normal text-slate-600">—</span>)
+          }
+          const showUnit = unitRaw.length > 0
+          return wrap(
+            <>
+              <span className="font-bold text-slate-900">{qtyStr}</span>
+              {showUnit ? (
+                <span className="font-normal text-slate-900 ms-1">
+                  {' '}
+                  ({unitRaw.toUpperCase()})
+                </span>
+              ) : null}
+            </>,
+          )
+        },
+      },
     ],
-    [ingredientOptions, ingredientsById, ingredientsByItemCode],
+    [
+      ingredientOptions,
+      ingredientsById,
+      ingredientsByItemCode,
+      loadConversionsIntoRow,
+      loadDefaultStockIntoRow,
+    ],
   )
 
   const grandTotal = useMemo(() => {
-    return rows.reduce((sum, r) => {
+    return formik.values.rows.reduce((sum, r) => {
       const q = parseFloat(String(r.qty).replace(',', '.')) || 0
       const p = parseFloat(String(r.unitPrice).replace(',', '.')) || 0
       return sum + q * p
     }, 0)
-  }, [rows])
+  }, [formik.values.rows])
 
   return (
     <section className="space-y-4">
@@ -364,22 +719,54 @@ export function PurchasesCreatePage() {
         <AddOriginButton />
       </div>
 
+      <form
+        onSubmit={formik.handleSubmit}
+        className="space-y-4"
+        data-purchase-create-form=""
+      >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="space-y-1">
-          <span className="text-sm font-medium text-slate-700">Date of purchase</span>
+          <span className="text-sm font-medium text-slate-900 ms-1">Date of purchase</span>
           <input
             type="date"
-            value={purchaseDate}
-            onChange={(e) => setPurchaseDate(e.target.value)}
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+            name="purchaseDate"
+            value={formik.values.purchaseDate}
+            onChange={(e) => {
+              formik.handleChange(e)
+              clearFieldError('purchaseDate')
+            }}
+            onBlur={formik.handleBlur}
+            aria-invalid={Boolean(formik.errors.purchaseDate)}
+            className={
+              'h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 ' +
+              (formik.errors.purchaseDate
+                ? 'border-red-400 focus:ring-red-300'
+                : 'border-slate-200 focus:ring-slate-300')
+            }
           />
+          {formik.errors.purchaseDate ? (
+            <p className="text-xs text-red-600" role="alert">
+              {formik.errors.purchaseDate}
+            </p>
+          ) : null}
         </label>
         <label className="space-y-1">
-          <span className="text-sm font-medium text-slate-700">Received To</span>
+          <span className="text-sm font-medium text-slate-900 ms-1">Received To</span>
           <select
-            value={originId}
-            onChange={(e) => setOriginId(e.target.value)}
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+            name="originId"
+            value={formik.values.originId}
+            onChange={(e) => {
+              formik.handleChange(e)
+              clearFieldError('originId')
+            }}
+            onBlur={formik.handleBlur}
+            aria-invalid={Boolean(formik.errors.originId)}
+            className={
+              'h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 ' +
+              (formik.errors.originId
+                ? 'border-red-400 focus:ring-red-300'
+                : 'border-slate-200 focus:ring-slate-300')
+            }
           >
             {originOptions.length === 0 ? (
               <option value="">No origins found</option>
@@ -391,14 +778,21 @@ export function PurchasesCreatePage() {
               ))
             )}
           </select>
+          {formik.errors.originId ? (
+            <p className="text-xs text-red-600" role="alert">
+              {formik.errors.originId}
+            </p>
+          ) : null}
         </label>
         <label className="space-y-1">
-          <span className="text-sm font-medium text-slate-700">
+          <span className="text-sm font-medium text-slate-900 ms-1">
             Transfer To <span className="font-normal text-slate-500">(optional)</span>
           </span>
           <select
-            value={transferTo}
-            onChange={(e) => setTransferTo(e.target.value)}
+            name="transferTo"
+            value={formik.values.transferTo}
+            onChange={formik.handleChange}
+            onBlur={formik.handleBlur}
             className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
             <option value="">Select destination…</option>
@@ -416,7 +810,7 @@ export function PurchasesCreatePage() {
           </select>
         </label>
         {/* <label className="space-y-1">
-          <span className="text-sm font-medium text-slate-700">
+          <span className="text-sm font-medium text-slate-900 ms-1">
             Vendor <span className="font-normal text-slate-500">(optional)</span>
           </span>
           <input
@@ -428,12 +822,14 @@ export function PurchasesCreatePage() {
           />
         </label> */}
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-sm font-medium text-slate-700">
+          <span className="text-sm font-medium text-slate-900 ms-1">
             Notes <span className="font-normal text-slate-500">(optional)</span>
           </span>
           <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            name="notes"
+            value={formik.values.notes}
+            onChange={formik.handleChange}
+            onBlur={formik.handleBlur}
             rows={3}
             placeholder="Notes"
             className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
@@ -441,39 +837,47 @@ export function PurchasesCreatePage() {
         </label>
       </div>
 
-      <LineItemsGrid
-        rows={rows}
-        onRowsChange={setRows}
-        createRow={newRow}
-        columns={purchaseColumns}
-        footer={{
-          label: 'Total',
-          value: grandTotal.toFixed(2),
-          leadingColumnsSpan: 6,
-        }}
-      />
-
-      <div className="flex justify-end pt-2">
-        <Button
-          variant="primary"
-          type="button"
-          onClick={() => {
-            // TODO: POST purchase payload
-            console.warn('[Purchase save]', {
-              transferTo,
-              purchaseDate,
-              origin_id: originId ? Number(originId) : null,
-              vendor,
-              notes,
-              rows,
-              grandTotal,
-            })
-            alert('Purchase saved (mock).')
+      <div className="space-y-1">
+        <LineItemsGrid
+          rows={formik.values.rows}
+          onRowsChange={(updater) => {
+            setRows(updater)
+            clearFieldError('items')
           }}
-        >
-          Save
-        </Button>
+          createRow={newRow}
+          columns={purchaseColumns}
+          footer={{
+            label: 'Total',
+            value: grandTotal.toFixed(2),
+            leadingColumnsSpan: 6,
+            blankCellsBeforeActions: 1,
+          }}
+        />
+        {formik.errors.items ? (
+          <p className="text-xs text-red-600" role="alert">
+            {formik.errors.items}
+          </p>
+        ) : null}
       </div>
+
+      <div className="flex flex-col items-end gap-2 pt-2">
+        {formik.status ? (
+          <p className="text-sm text-red-600" role="alert">
+            {formik.status}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="secondary" disabled={formik.isSubmitting} onClick={handleResetPurchaseForm}>
+            <RotateCcw className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Reset
+          </Button>
+          <Button variant="dark" type="submit" disabled={formik.isSubmitting}>
+            <Save className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {formik.isSubmitting ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </div>
+      </form>
     </section>
   )
 }

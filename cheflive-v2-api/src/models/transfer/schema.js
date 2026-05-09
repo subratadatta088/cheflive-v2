@@ -15,6 +15,11 @@ const TransferCreateSchema = z.object({
   items: z.array(TransferItemNestedCreateSchema).optional(),
 })
 
+/** Applied to nested transfer_items rows; set from JWT user in TransferService. */
+const TransferCreateInternalSchema = TransferCreateSchema.extend({
+  created_by: z.number().int().positive().nullable().optional(),
+})
+
 const TransferUpdateSchema = z.object({
   from_origin_id: z.number().int().positive().optional().nullable(),
   to_origin_id: z.number().int().positive().optional().nullable(),
@@ -34,6 +39,7 @@ const TransferRowSchema = z.object({
   transfer_date: z.string().optional().nullable(),
   date: z.string().optional().nullable(), // legacy column (kept for backward compatibility)
   note: z.string().nullable().optional(),
+  created_by: z.number().int().positive().nullable().optional(),
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),
   deleted_at: z.string().optional().nullable(),
@@ -51,6 +57,7 @@ const TransferListQuerySchema = z.object({
 module.exports = {
   TransferIdSchema,
   TransferCreateSchema,
+  TransferCreateInternalSchema,
   TransferUpdateSchema,
   TransferRowSchema,
   TransferListQuerySchema,

@@ -74,6 +74,23 @@ export async function listIngredientUnitConversions(id) {
 }
 
 /**
+ * GET /ingredients/:id/running-stock/default
+ * Default-origin running stock for an ingredient (org from JWT).
+ * @param {number|string} id
+ * @returns {Promise<{
+ *   ingredient_id: number,
+ *   unit: string,
+ *   origin: Record<string, unknown>,
+ *   qty: number,
+ *   running_stock: Record<string, unknown> | null,
+ * }>}
+ */
+export async function getIngredientRunningStockDefault(id) {
+  const res = await api.get(`ingredients/${id}/running-stock/default`)
+  return res.data
+}
+
+/**
  * PUT /ingredients/:id/unit-conversions (upsert)
  * @param {number|string} id
  * @param {{ items: Array<{ id?: number, from_unit?: string, to_unit?: string, factor?: number }> }|Array<any>} payload

@@ -35,6 +35,7 @@ const PurchaseItemRowSchema = z.object({
   qty: z.number(),
   unit: z.string().nullable().optional(),
   unit_price: z.number().nullable().optional(),
+  created_by: z.number().int().positive().nullable().optional(),
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),
   deleted_at: z.string().optional().nullable(),

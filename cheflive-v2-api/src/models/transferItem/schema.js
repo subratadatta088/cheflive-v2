@@ -7,7 +7,8 @@ const OrganizationIdSchema = z.number().int().positive()
 const TransferItemNestedCreateSchema = z.object({
   ingredient_id: z.number().int().positive(),
   qty: z.coerce.number().positive(),
-  unit_id: z.number().int().positive().optional().nullable(),
+  /** Unit the qty is expressed in; must match ingredient base or a conversion pair. */
+  unit: z.string().min(1),
 })
 
 const TransferItemCreateSchema = z.object({
@@ -15,12 +16,17 @@ const TransferItemCreateSchema = z.object({
   transfer_id: TransferIdSchema,
   ingredient_id: z.number().int().positive(),
   qty: z.coerce.number().positive(),
-  unit_id: z.number().int().positive().optional().nullable(),
+  unit: z.string().min(1),
+})
+
+/** Server-only audit; set from JWT user in TransferItemService — not part of public API body. */
+const TransferItemCreateInternalSchema = TransferItemCreateSchema.extend({
+  created_by: z.number().int().positive().nullable().optional(),
 })
 
 const TransferItemUpdateSchema = z.object({
   qty: z.coerce.number().positive().optional(),
-  unit_id: z.number().int().positive().optional().nullable(),
+  unit: z.string().min(1).optional(),
 })
 
 const TransferItemRowSchema = z.object({
@@ -29,8 +35,8 @@ const TransferItemRowSchema = z.object({
   transfer_id: z.number().int().positive().optional().nullable(),
   ingredient_id: z.number().int().positive().optional().nullable(),
   qty: z.coerce.number(),
-  unit: z.string().optional().nullable(), // legacy column (kept for backward compatibility)
-  unit_id: z.number().int().positive().optional().nullable(),
+  unit: z.coerce.string().optional().nullable(),
+  created_by: z.number().int().positive().nullable().optional(),
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),
   deleted_at: z.string().optional().nullable(),
@@ -48,6 +54,7 @@ module.exports = {
   TransferIdSchema,
   TransferItemNestedCreateSchema,
   TransferItemCreateSchema,
+  TransferItemCreateInternalSchema,
   TransferItemUpdateSchema,
   TransferItemRowSchema,
   TransferItemListQuerySchema,

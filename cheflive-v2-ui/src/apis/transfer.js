@@ -20,7 +20,7 @@ export async function listTransfers(query = {}) {
  *  to_utilisation_id?: number|null,
  *  transfer_date: string,
  *  note?: string,
- *  items?: Array<{ ingredient_id: number, qty: number, unit_id?: number|null }>
+ *  items?: Array<{ ingredient_id: number, qty: number, unit: string }>
  * }} payload
  */
 export async function createTransfer(payload) {

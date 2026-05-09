@@ -54,7 +54,7 @@ function CellInput({ value, onChange, readOnly = false, className = '', ...rest 
  *   getRowClassName?: (row: T, index: number) => string,
  *   className?: string,
  *   tableClassName?: string,
- *   footer?: { label: string; value: string; leadingColumnsSpan: number } | null,
+ *   footer?: { label: string; value: string; leadingColumnsSpan: number; blankCellsBeforeActions?: number } | null,
  * }} props
  */
 export function LineItemsGrid({
@@ -178,11 +178,17 @@ export function LineItemsGrid({
     )
   }
 
+  // Each row drops the left border on its first cell and the right border on
+  // its last cell so the table appears edge-to-edge ("infinite") while
+  // internal cell separators remain. Works regardless of whether the optional
+  // index column or row-actions column are rendered.
+  const edgelessRow = '[&>:first-child]:border-l-0 [&>:last-child]:border-r-0'
+
   return (
-    <div className={`overflow-x-auto rounded-lg border-x border-slate-200 bg-white ${className}`}>
+    <div className={`overflow-x-auto bg-white ${className}`}>
       <table className={`w-full min-w-[760px] border-collapse border-0 text-left text-sm ${tableClassName}`}>
         <thead>
-          <tr className="bg-slate-50">
+          <tr className={`bg-white [&>*]:border-x-0 [&>*]:border-t-0 ${edgelessRow}`}>
             {showIndexColumn ? (
               <th className="w-12 border border-slate-200 px-0 py-0 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
                 #
@@ -207,7 +213,7 @@ export function LineItemsGrid({
           {rows.map((row, index) => (
             <tr
               key={row.id}
-              className={`hover:bg-slate-50/40 ${typeof getRowClassName === 'function' ? getRowClassName(row, index) : ''}`}
+              className={`hover:bg-slate-50/40 ${edgelessRow} ${typeof getRowClassName === 'function' ? getRowClassName(row, index) : ''}`}
             >
               {showIndexColumn ? (
                 <td className="border border-slate-200 p-0 align-middle">
@@ -247,7 +253,7 @@ export function LineItemsGrid({
         </tbody>
         {footer ? (
           <tfoot>
-            <tr className="bg-slate-50">
+            <tr className={`bg-slate-50 ${edgelessRow}`}>
               <td
                 colSpan={footer.leadingColumnsSpan}
                 className="border border-slate-200 px-2 py-2 text-right text-sm font-medium text-slate-700"
@@ -257,6 +263,14 @@ export function LineItemsGrid({
               <td className="border border-slate-200 p-0 align-middle">
                 <CellInput readOnly value={footer.value} onChange={() => {}} />
               </td>
+              {Array.from({
+                length:
+                  footer.blankCellsBeforeActions !== undefined && footer.blankCellsBeforeActions > 0
+                    ? footer.blankCellsBeforeActions
+                    : 0,
+              }).map((_, i) => (
+                <td key={`footer-blank-${i}`} className="border border-slate-200 bg-slate-50" aria-hidden="true" />
+              ))}
               {showRowActions ? <td className="border border-slate-200 bg-slate-50" /> : null}
             </tr>
           </tfoot>

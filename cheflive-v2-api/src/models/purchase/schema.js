@@ -7,9 +7,15 @@ const OrganizationIdSchema = z.number().int().positive()
 const PurchaseCreateSchema = z.object({
   organization_id: OrganizationIdSchema,
   origin_id: z.number().int().positive(),
+  transfer_to: z.number().int().positive().optional(),
   date: z.string().min(1),
   note: z.string().optional(),
   items: z.array(PurchaseItemNestedCreateSchema).optional(),
+})
+
+/** Server-only: set from authenticated user; never accept from untrusted client without stripping in controller. */
+const PurchaseCreateInternalSchema = PurchaseCreateSchema.extend({
+  created_by: z.number().int().positive().nullable().optional(),
 })
 
 const PurchaseUpdateSchema = z.object({
@@ -24,6 +30,7 @@ const PurchaseRowSchema = z.object({
   origin_id: z.number().int().positive(),
   date: z.string(),
   note: z.string().nullable().optional(),
+  created_by: z.number().int().positive().nullable().optional(),
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),
   deleted_at: z.string().optional().nullable(),
@@ -40,6 +47,7 @@ const PurchaseListQuerySchema = z.object({
 module.exports = {
   PurchaseIdSchema,
   PurchaseCreateSchema,
+  PurchaseCreateInternalSchema,
   PurchaseUpdateSchema,
   PurchaseRowSchema,
   PurchaseListQuerySchema,

@@ -32,6 +32,7 @@ class StockService {
           ingredient_id,
           qty_delta: +qty,
           occurred_at,
+          created_by: actor_user_id,
         })
         events.emit(EventTypes.StockUpdated, {
           organization_id: Number(t.organization_id),
@@ -56,6 +57,7 @@ class StockService {
           ingredient_id,
           qty_delta: -qty,
           occurred_at,
+          created_by: actor_user_id,
         })
         events.emit(EventTypes.StockUpdated, {
           organization_id: Number(t.organization_id),

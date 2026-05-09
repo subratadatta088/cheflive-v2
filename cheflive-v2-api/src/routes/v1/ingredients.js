@@ -15,7 +15,8 @@ router.post('/bulk', ingredientsController.bulkCreateIngredients)
 router.put('/bulk', ingredientsController.bulkUpdateIngredients)
 router.get('/by-item-code/:item_code', ingredientsController.getIngredientByItemCode)
 
-// Stock endpoints scoped to a single ingredient
+// Stock endpoints scoped to a single ingredient (`default` before `:origin_id` so it is not captured as an id)
+router.get('/:id/running-stock/default', ingredientsController.getIngredientRunningStockDefault)
 router.get('/:id/running-stock', ingredientsController.getIngredientRunningStock)
 router.get('/:id/running-stock/:origin_id', ingredientsController.getIngredientRunningStockByOrigin)
 router.get('/:id/stock-transitions', ingredientsController.listIngredientStockTransitions)

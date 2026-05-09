@@ -10,7 +10,10 @@ class TransferService {
   }
 
   async create(payload) {
-    const created = await this.models.transfer.create(payload)
+    const created = await this.models.transfer.create({
+      ...payload,
+      created_by: this.user?.id ?? null,
+    })
     events.emit(EventTypes.TransferEntryCreated, {
       organization_id: created.organization_id,
       transfer_id: created.id,

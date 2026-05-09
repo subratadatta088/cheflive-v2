@@ -1,4 +1,5 @@
 const { z } = require('zod')
+const { BooleanFlagSchema } = require('../../utils/zod')
 
 const OriginIdSchema = z.number().int().positive()
 const OrganizationIdSchema = z.number().int().positive()
@@ -36,9 +37,7 @@ const OriginListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   q: z.string().min(1).optional(),
   type: z.string().min(1).optional(),
-  is_active: z
-    .union([z.literal('0'), z.literal('1'), z.literal(0), z.literal(1), z.boolean()])
-    .optional(),
+  is_active: BooleanFlagSchema.optional(),
   organization_id: z.coerce.number().int().positive().optional(),
 })
 

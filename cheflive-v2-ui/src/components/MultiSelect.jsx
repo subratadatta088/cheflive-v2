@@ -41,6 +41,35 @@ const baseStyles = {
   }),
 }
 
+// Borderless variant for use inside grid cells (LineItemsGrid). Matches the
+// look of the plain `CellInput` cells: no border, no background fill, no
+// rounding, transparent until focus — then an inset slate ring like the
+// other cell inputs.
+const bareStyles = {
+  ...baseStyles,
+  control: (provided, state) => ({
+    ...provided,
+    minHeight: 36,
+    height: 36,
+    border: 0,
+    borderRadius: 0,
+    backgroundColor: state.isFocused ? '#f8fafc' : 'transparent', // slate-50 on focus
+    boxShadow: state.isFocused
+      ? 'inset 0 0 0 2px #cbd5e1' // slate-300 inset ring, matches CellInput focus
+      : 'none',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: '#0f172a',
+    '&:hover': { borderColor: 'transparent' },
+  }),
+  valueContainer: (provided) => ({ ...provided, padding: '0 8px', height: 36 }),
+  indicatorsContainer: (provided) => ({ ...provided, height: 36 }),
+  // Hide the vertical separator between value and indicators for a cleaner cell look.
+  indicatorSeparator: () => ({ display: 'none' }),
+  dropdownIndicator: (provided) => ({ ...provided, padding: 4, color: '#94a3b8' }),
+  clearIndicator: (provided) => ({ ...provided, padding: 4, color: '#94a3b8' }),
+}
+
 /**
  * @param {{
  *  options: { value: string, label: string }[],
@@ -51,6 +80,7 @@ const baseStyles = {
  *  placeholder?: string,
  *  className?: string,
  *  isDisabled?: boolean,
+ *  bare?: boolean,
  * }} props
  */
 export function MultiSelect({
@@ -62,6 +92,7 @@ export function MultiSelect({
   placeholder = 'Select…',
   className = '',
   isDisabled = false,
+  bare = false,
 }) {
   const safeOptions = Array.isArray(options) ? options : []
   const safeValue = isMulti ? (Array.isArray(value) ? value : []) : String(value ?? '')
@@ -106,7 +137,7 @@ export function MultiSelect({
         placeholder={placeholder}
         components={animatedComponents}
         styles={{
-          ...baseStyles,
+          ...(bare ? bareStyles : baseStyles),
           menuPortal: (provided) => ({ ...provided, zIndex: 80 }),
         }}
       />

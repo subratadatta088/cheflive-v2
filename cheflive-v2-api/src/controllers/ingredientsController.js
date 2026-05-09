@@ -18,6 +18,7 @@ class IngredientsController {
     this.listIngredients = this.listIngredients.bind(this)
     this.getIngredientById = this.getIngredientById.bind(this)
     this.getIngredientRunningStock = this.getIngredientRunningStock.bind(this)
+    this.getIngredientRunningStockDefault = this.getIngredientRunningStockDefault.bind(this)
     this.getIngredientRunningStockByOrigin = this.getIngredientRunningStockByOrigin.bind(this)
     this.listIngredientStockTransitions = this.listIngredientStockTransitions.bind(this)
     this.updateIngredientById = this.updateIngredientById.bind(this)
@@ -447,6 +448,46 @@ class IngredientsController {
       ingredient_id: idParsed.data,
       unit: ingredient.unit,
       items,
+    })
+  }
+
+  /**
+   * Running stock for this ingredient at the organization’s default origin (`origins.is_default = 1`).
+   * Scoped by the authenticated user’s organization.
+   */
+  async getIngredientRunningStockDefault(req, res) {
+    const idParsed = IngredientIdSchema.safeParse(Number(req.params.id))
+    if (!idParsed.success) return res.status(400).json({ error: 'Invalid id' })
+
+    const organization_id = req.user?.organization_id
+    if (!organization_id) {
+      return res.status(400).json({ error: 'organization_id is required' })
+    }
+
+    const ingredient = await req.models.ingredient.getById(idParsed.data)
+    if (!ingredient) return res.status(404).json({ error: 'Not found' })
+
+    const defaultOrigin = await req.models.origin.getDefaultForOrganization(organization_id)
+    if (!defaultOrigin) {
+      return res.status(404).json({ error: 'No default origin for organization' })
+    }
+
+    const rows = await req.models.runningStock.list({
+      organization_id,
+      ingredient_id: idParsed.data,
+      origin_id: defaultOrigin.id,
+      page: 1,
+      limit: 1,
+    })
+
+    const row = Array.isArray(rows) && rows.length ? rows[0] : null
+
+    return res.json({
+      ingredient_id: idParsed.data,
+      unit: ingredient.unit,
+      origin: defaultOrigin,
+      qty: row ? Number(row.qty) : 0,
+      running_stock: row,
     })
   }
 

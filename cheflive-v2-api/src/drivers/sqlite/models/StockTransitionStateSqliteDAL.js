@@ -70,7 +70,13 @@ class StockTransitionStateSqliteDAL extends StockTransitionStateModel {
 
   async getById(id) {
     const stsId = StockTransitionStateIdSchema.parse(id)
-    const row = await get(this.db, `SELECT * FROM stock_transition_states WHERE id = ?`, [stsId])
+    const row = await get(
+      this.db,
+      `SELECT * FROM stock_transition_states
+       WHERE id = ?
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [stsId]
+    )
     if (!row) return null
     return normalizeRow(row)
   }
@@ -79,7 +85,7 @@ class StockTransitionStateSqliteDAL extends StockTransitionStateModel {
     const q = StockTransitionStateListQuerySchema.parse(query)
     if (!q.organization_id) throw new Error('organization_id is required')
 
-    const where = ['organization_id = ?']
+    const where = ['organization_id = ?', `(deleted_at IS NULL OR deleted_at = '')`]
     const params = [q.organization_id]
 
     if (q.origin_id) {

@@ -41,41 +41,46 @@ function buildAppMenu(mainWindow) {
       ],
     },
     {
-      label: 'Purchases',
+      label: 'Entries',
       submenu: [
         {
-          label: 'Create',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/purchases/create' }),
+          label: 'Purchases',
+          submenu: [
+            {
+              label: 'Create',
+              click: () => mainWindow.webContents.send('app:navigate', { path: '/purchases/create' }),
+            },
+            {
+              label: 'History',
+              click: () => mainWindow.webContents.send('app:navigate', { path: '/purchases/history' }),
+            },
+          ],
         },
         {
-          label: 'History',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/purchases/history' }),
-        },
-      ],
-    },
-    {
-      label: 'Transfers',
-      submenu: [
-        {
-          label: 'Create',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/transfers/create' }),
-        },
-        {
-          label: 'History',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/transfers/history' }),
-        },
-      ],
-    },
-    {
-      label: 'Utilizations',
-      submenu: [
-        {
-          label: 'Create',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/utilizations/create' }),
+          label: 'Transfers',
+          submenu: [
+            {
+              label: 'Create',
+              click: () => mainWindow.webContents.send('app:navigate', { path: '/transfers/create' }),
+            },
+            {
+              label: 'History',
+              click: () => mainWindow.webContents.send('app:navigate', { path: '/transfers/history' }),
+            },
+          ],
         },
         {
-          label: 'History',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/utilizations/history' }),
+          label: 'Utilizations',
+          submenu: [
+            {
+              label: 'Create',
+              click: () => mainWindow.webContents.send('app:navigate', { path: '/utilizations/create' }),
+            },
+            {
+              label: 'History',
+              click: () => mainWindow.webContents.send('app:navigate', { path: '/utilizations/history' }),
+            },
+          ],
         },
       ],
     },

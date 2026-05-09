@@ -1,6 +1,6 @@
 const { PurchaseModel } = require('../../../models/PurchaseModel')
 const {
-  PurchaseCreateSchema,
+  PurchaseCreateInternalSchema,
   PurchaseIdSchema,
   PurchaseRowSchema,
   PurchaseUpdateSchema,
@@ -76,8 +76,9 @@ class PurchaseSqliteDAL extends PurchaseModel {
   }
 
   async create(data) {
-    const payload = PurchaseCreateSchema.parse(data)
+    const payload = PurchaseCreateInternalSchema.parse(data)
     const now = new Date().toISOString()
+    const created_by = payload.created_by ?? null
 
     return await withTransaction(this.db, async () => {
       const originRow = await get(
@@ -106,13 +107,14 @@ class PurchaseSqliteDAL extends PurchaseModel {
 
       const result = await run(
         this.db,
-        `INSERT INTO purchases (organization_id, origin_id, date, note, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO purchases (organization_id, origin_id, date, note, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           payload.organization_id,
           payload.origin_id,
           payload.date,
           payload.note ?? null,
+          created_by,
           now,
           now,
         ]
@@ -124,8 +126,8 @@ class PurchaseSqliteDAL extends PurchaseModel {
         for (const it of payload.items) {
           await run(
             this.db,
-            `INSERT INTO purchase_items (organization_id, purchase_id, ingredient_id, qty, unit, unit_price, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO purchase_items (organization_id, purchase_id, ingredient_id, qty, unit, unit_price, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               payload.organization_id,
               purchaseId,
@@ -133,6 +135,7 @@ class PurchaseSqliteDAL extends PurchaseModel {
               it.qty,
               it.unit ?? null,
               it.unit_price ?? null,
+              created_by,
               now,
               now,
             ]

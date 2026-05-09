@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS stock_transition_states (
   source_transfer_item_id INTEGER,
   occurred_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  created_by INTEGER
+  created_by INTEGER,
+  deleted_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sts_org_origin_ing

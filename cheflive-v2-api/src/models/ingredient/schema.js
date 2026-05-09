@@ -1,4 +1,5 @@
 const { z } = require('zod')
+const { BooleanFlagSchema } = require('../../utils/zod')
 
 const IngredientIdSchema = z.number().int().positive()
 const OrganizationIdSchema = z.number().int().positive()
@@ -70,9 +71,7 @@ const IngredientListQuerySchema = z.object({
       return flat
     }, z.array(z.coerce.number().int().positive()).nonempty())
     .optional(),
-  is_active: z
-    .union([z.literal('0'), z.literal('1'), z.literal(0), z.literal(1), z.boolean()])
-    .optional(),
+  is_active: BooleanFlagSchema.optional(),
 })
 
 module.exports = {

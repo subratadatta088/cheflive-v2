@@ -1,6 +1,6 @@
 const { TransferModel } = require('../../../models/TransferModel')
 const {
-  TransferCreateSchema,
+  TransferCreateInternalSchema,
   TransferIdSchema,
   TransferRowSchema,
   TransferUpdateSchema,
@@ -78,8 +78,9 @@ class TransferSqliteDAL extends TransferModel {
   }
 
   async create(data) {
-    const payload = TransferCreateSchema.parse(data)
+    const payload = TransferCreateInternalSchema.parse(data)
     const now = new Date().toISOString()
+    const item_created_by = payload.created_by ?? null
 
     return await withTransaction(this.db, async () => {
       if (payload.from_origin_id) {
@@ -152,9 +153,10 @@ class TransferSqliteDAL extends TransferModel {
            transfer_date,
            date,
            note,
+           created_by,
            created_at,
            updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           payload.organization_id,
           payload.from_origin_id ?? null,
@@ -164,6 +166,7 @@ class TransferSqliteDAL extends TransferModel {
           payload.transfer_date,
           payload.transfer_date, // keep legacy `date` in sync for older clients
           payload.note ?? null,
+          item_created_by,
           now,
           now,
         ]
@@ -180,16 +183,18 @@ class TransferSqliteDAL extends TransferModel {
                transfer_id,
                ingredient_id,
                qty,
-               unit_id,
+               unit,
+               created_by,
                created_at,
                updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               payload.organization_id,
               transferId,
               it.ingredient_id,
               it.qty,
-              it.unit_id ?? null,
+              it.unit,
+              item_created_by,
               now,
               now,
             ]
@@ -409,7 +414,7 @@ class TransferSqliteDAL extends TransferModel {
           to_origin_id: transfer.to_origin_id ?? null,
           ingredient_id: Number(it.ingredient_id),
           qty: Number(it.qty),
-          unit_id: it.unit_id ?? null,
+          unit: String(it.unit ?? ''),
           source_transfer_id: tid,
           source_transfer_item_id: Number(it.id) || null,
           occurred_at,
@@ -439,7 +444,7 @@ class TransferSqliteDAL extends TransferModel {
           to_origin_id: prev.to_origin_id ?? null,
           ingredient_id: Number(it.ingredient_id),
           qty: Number(it.qty),
-          unit_id: it.unit_id ?? null,
+          unit: String(it.unit ?? ''),
           source_transfer_id: tid,
           source_transfer_item_id: Number(it.id) || null,
           occurred_at,
@@ -452,7 +457,7 @@ class TransferSqliteDAL extends TransferModel {
           to_origin_id: next.to_origin_id ?? null,
           ingredient_id: Number(it.ingredient_id),
           qty: Number(it.qty),
-          unit_id: it.unit_id ?? null,
+          unit: String(it.unit ?? ''),
           source_transfer_id: tid,
           source_transfer_item_id: Number(it.id) || null,
           occurred_at,
@@ -481,7 +486,7 @@ class TransferSqliteDAL extends TransferModel {
           to_origin_id: prev.to_origin_id ?? null,
           ingredient_id: Number(it.ingredient_id),
           qty: Number(it.qty),
-          unit_id: it.unit_id ?? null,
+          unit: String(it.unit ?? ''),
           source_transfer_id: tid,
           source_transfer_item_id: Number(it.id) || null,
           occurred_at,

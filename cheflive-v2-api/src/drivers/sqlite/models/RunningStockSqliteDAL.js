@@ -109,7 +109,7 @@ class RunningStockSqliteDAL extends RunningStockModel {
    * Apply a qty delta to running_stock and return before/after.
    * This does NOT write stock_transition_states (handled by StockUpdated event).
    *
-   * @param {{ organization_id: number, origin_id: number, ingredient_id: number, qty_delta: number, occurred_at?: string }} params
+   * @param {{ organization_id: number, origin_id: number, ingredient_id: number, qty_delta: number, occurred_at?: string, created_by?: number|null }} params
    * @returns {Promise<{ qty_before: number, qty_after: number, unit: string, running_stock_id: number }>}
    */
   async applyDelta(params) {
@@ -117,6 +117,7 @@ class RunningStockSqliteDAL extends RunningStockModel {
     const origin_id = Number(params.origin_id)
     const ingredient_id = Number(params.ingredient_id)
     const qty_delta = Number(params.qty_delta)
+    const created_by = params.created_by ?? null
 
     if (!Number.isFinite(organization_id) || organization_id <= 0) throw new Error('organization_id is required')
     if (!Number.isFinite(origin_id) || origin_id <= 0) throw new Error('origin_id is required')
@@ -154,9 +155,9 @@ class RunningStockSqliteDAL extends RunningStockModel {
       } else {
         const ins = await run(
           this.db,
-          `INSERT INTO running_stock (organization_id, origin_id, ingredient_id, qty, unit, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [organization_id, origin_id, ingredient_id, qty_after, unit, now, now]
+          `INSERT INTO running_stock (organization_id, origin_id, ingredient_id, qty, unit, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [organization_id, origin_id, ingredient_id, qty_after, unit, created_by, now, now]
         )
         running_stock_id = ins.lastID
       }

@@ -1,6 +1,6 @@
 const { TransferItemModel } = require('../../../models/TransferItemModel')
 const {
-  TransferItemCreateSchema,
+  TransferItemCreateInternalSchema,
   TransferItemIdSchema,
   TransferItemListQuerySchema,
   TransferItemRowSchema,
@@ -81,8 +81,9 @@ class TransferItemSqliteDAL extends TransferItemModel {
   }
 
   async create(data) {
-    const payload = TransferItemCreateSchema.parse(data)
+    const payload = TransferItemCreateInternalSchema.parse(data)
     const now = new Date().toISOString()
+    const created_by = payload.created_by ?? null
 
     return await withTransaction(this.db, async () => {
       const transferRow = await loadParentTransfer(this.db, payload.transfer_id)
@@ -101,14 +102,15 @@ class TransferItemSqliteDAL extends TransferItemModel {
 
       const result = await run(
         this.db,
-        `INSERT INTO transfer_items (organization_id, transfer_id, ingredient_id, qty, unit_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO transfer_items (organization_id, transfer_id, ingredient_id, qty, unit, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           payload.organization_id,
           payload.transfer_id,
           payload.ingredient_id,
           payload.qty,
-          payload.unit_id ?? null,
+          payload.unit,
+          created_by,
           now,
           now,
         ]
@@ -175,9 +177,9 @@ class TransferItemSqliteDAL extends TransferItemModel {
         fields.push('qty = ?')
         params.push(payload.qty)
       }
-      if (payload.unit_id !== undefined) {
-        fields.push('unit_id = ?')
-        params.push(payload.unit_id)
+      if (payload.unit !== undefined) {
+        fields.push('unit = ?')
+        params.push(payload.unit)
       }
 
       fields.push('updated_at = ?')

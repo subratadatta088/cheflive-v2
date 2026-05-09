@@ -8,7 +8,10 @@ class TransferItemService {
   }
 
   async create(payload) {
-    return await this.models.transferItem.create(payload)
+    return await this.models.transferItem.create({
+      ...payload,
+      created_by: this.user?.id ?? null,
+    })
   }
 
   async list(query) {

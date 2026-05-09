@@ -29,6 +29,7 @@ const StockTransitionStateRowSchema = z.object({
   occurred_at: z.string(),
   created_at: z.string().optional().nullable(),
   created_by: z.number().int().positive().optional().nullable(),
+  deleted_at: z.string().optional().nullable(),
 })
 
 const StockTransitionStateListQuerySchema = z.object({

@@ -10,6 +10,7 @@ const RunningStockRowSchema = z.object({
   ingredient_id: z.number().int().positive(),
   qty: z.coerce.number(),
   unit: z.string(),
+  created_by: z.number().int().positive().nullable().optional(),
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),
   deleted_at: z.string().optional().nullable(),
@@ -17,7 +18,8 @@ const RunningStockRowSchema = z.object({
 
 const RunningStockListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(200).default(50),
+  /** Aligned with GET /ingredients/:id/running-stock (default up to 1000 rows per ingredient). */
+  limit: z.coerce.number().int().positive().max(1000).default(50),
   organization_id: z.coerce.number().int().positive().optional(),
   origin_id: z.coerce.number().int().positive().optional(),
   ingredient_id: z.coerce.number().int().positive().optional(),

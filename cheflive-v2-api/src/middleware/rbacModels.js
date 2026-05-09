@@ -187,6 +187,9 @@ function withScopedModels(req, res, next) {
           if (row.organization_id !== req.user.organization_id) return forbidden(res)
           return row
         },
+        getDefaultForOrganization: async () => {
+          return await originDal.getDefaultForOrganization(req.user.organization_id)
+        },
         list: async (query) => {
           return await originDal.list({ ...query, organization_id: req.user.organization_id })
         },
@@ -526,6 +529,9 @@ function withScopedModels(req, res, next) {
         if (!row) return null
         if (row.organization_id !== req.user.organization_id) return forbidden(res)
         return row
+      },
+      getDefaultForOrganization: async () => {
+        return await originDal.getDefaultForOrganization(req.user.organization_id)
       },
       list: async (query) => {
         return await originDal.list({ ...query, organization_id: req.user.organization_id })

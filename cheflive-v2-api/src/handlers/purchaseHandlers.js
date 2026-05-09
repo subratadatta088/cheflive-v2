@@ -26,7 +26,11 @@ async function convertPurchaseItemsToTransferItems(models, purchase) {
       qtyDefault = qty * Number(match.factor)
     }
 
-    out.push({ ingredient_id: Number(it.ingredient_id), qty: qtyDefault, unit_id: null })
+    out.push({
+      ingredient_id: Number(it.ingredient_id),
+      qty: qtyDefault,
+      unit: defaultUnit,
+    })
   }
 
   return out

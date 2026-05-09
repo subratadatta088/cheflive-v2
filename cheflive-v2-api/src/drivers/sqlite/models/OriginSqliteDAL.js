@@ -1,10 +1,13 @@
 const { OriginModel } = require('../../../models/OriginModel')
+const { z } = require('zod')
 const {
   OriginCreateSchema,
   OriginIdSchema,
   OriginRowSchema,
   OriginUpdateSchema,
 } = require('../../../models/origin/schema')
+
+const OrganizationIdSchema = z.number().int().positive()
 const { openSqlite } = require('../db')
 
 function run(db, sql, params = []) {
@@ -82,6 +85,23 @@ class OriginSqliteDAL extends OriginModel {
   async getById(id) {
     const originId = OriginIdSchema.parse(id)
     const row = await get(this.db, `SELECT * FROM origins WHERE id = ?`, [originId])
+    if (!row) return null
+    return normalizeOriginRow(row)
+  }
+
+  /** Single origin flagged `is_default` for the org (stable choice if multiple). */
+  async getDefaultForOrganization(organization_id) {
+    const orgId = OrganizationIdSchema.parse(organization_id)
+    const row = await get(
+      this.db,
+      `SELECT * FROM origins
+       WHERE organization_id = ?
+         AND is_default = 1
+         AND (deleted_at IS NULL OR deleted_at = '')
+       ORDER BY id ASC
+       LIMIT 1`,
+      [orgId]
+    )
     if (!row) return null
     return normalizeOriginRow(row)
   }

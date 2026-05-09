@@ -55,16 +55,6 @@ async function registerHandlers() {
   const store = new JobStore()
   await store.init()
 
-  // On startup: log any leftover jobs (previous crash, etc.)
-  try {
-    const leftovers = await store.list()
-    if (leftovers.length) {
-      log.warn('event_jobs_leftover', { count: leftovers.length })
-    }
-  } catch (e) {
-    log.error('event_jobs_leftover_failed', { error: String(e?.message || e) })
-  }
-
   const bind = (eventType, handler) => {
     events.on(eventType, async (payload) => {
       const key = extractKey(payload)
@@ -99,9 +89,7 @@ async function registerHandlers() {
           const models = buildModels()
           await handler({ models, payload })
 
-          const completedIso = new Date().toISOString()
           try {
-            await store.update(jobId, { status: 'completed', completed_at: completedIso })
             await store.remove(jobId)
           } catch {
             // ignore
@@ -139,6 +127,188 @@ async function registerHandlers() {
   bind(EventTypes.StockUpdated, stockHandlers.onStockUpdated)
 
   log.info('event_handlers_registered', {})
+
+  // Startup recovery + retention run AFTER handlers are bound, so any
+  // re-emitted events have listeners.
+  await recoverLeftoverJobs(store)
+  await pruneCompleted(store)
+}
+
+/**
+ * Recover leftover top-level job files (queued / running / failed from a
+ * previous process). The contract:
+ *
+ *  - Before re-emitting, the original file is removed so only one in-flight
+ *    copy exists; the new run creates a fresh log via the listener.
+ *  - Duplicate payloads (same type + same JSON-serialised payload): only the
+ *    oldest is replayed; extras are deleted so they are not replayed twice.
+ *  - Unknown event types and corrupt files are moved to `dead-letter/` for
+ *    inspection.
+ *  - Disabled with EVENT_JOBS_RECOVER_ON_START=false.
+ */
+async function recoverLeftoverJobs(store) {
+  if (String(process.env.EVENT_JOBS_RECOVER_ON_START ?? 'true').toLowerCase() === 'false') {
+    return
+  }
+
+  let listing
+  try {
+    listing = await store.list()
+  } catch (e) {
+    log.error('event_jobs_leftover_failed', { error: String(e?.message || e) })
+    return
+  }
+
+  const { parsed = [], corrupt = [] } = listing || {}
+  if (!parsed.length && !corrupt.length) return
+
+  const now = new Date().toISOString()
+
+  // 1) Quarantine corrupt/empty files into dead-letter/ — never delete them.
+  let quarantinedCorrupt = 0
+  for (const c of corrupt) {
+    try {
+      await store.deadLetterRawFile(c.filename, c.fullPath)
+      quarantinedCorrupt++
+    } catch (e) {
+      log.error('event_jobs_quarantine_failed', {
+        filename: c.filename,
+        error: String(e?.message || e),
+      })
+    }
+  }
+
+  // 2) Sort by created_at so we keep the OLDEST of each duplicate group.
+  const sorted = parsed.slice().sort((a, b) =>
+    String(a?.created_at || '').localeCompare(String(b?.created_at || '')),
+  )
+
+  const knownTypes = new Set(Object.values(EventTypes))
+  const seenPayloadKey = new Set()
+  const dedupeKey = (j) => `${j.type}::${j.key ?? ''}::${stableStringify(j.payload)}`
+
+  let unknownType = 0
+  let dedupedSkipped = 0
+  let recovered = 0
+
+  log.warn('event_jobs_recovery_start', {
+    foundParsed: parsed.length,
+    foundCorrupt: corrupt.length,
+    quarantinedCorrupt,
+  })
+
+  for (const job of sorted) {
+    if (!job || !job.id) continue
+
+    // Unknown event type → dead-letter (no listener to consume it anyway).
+    if (!knownTypes.has(job.type)) {
+      try {
+        await store.archiveTo(job.id, 'dead-letter', {
+          status: 'dead-unknown-type',
+          dead_lettered_at: now,
+          reason: 'unknown event type',
+        })
+        unknownType++
+      } catch (e) {
+        log.error('event_job_recovery_dead_letter_failed', {
+          jobId: job.id,
+          error: String(e?.message || e),
+        })
+      }
+      continue
+    }
+
+    // Dedupe: same payload as a job already scheduled for replay.
+    const k = dedupeKey(job)
+    if (seenPayloadKey.has(k)) {
+      try {
+        await store.remove(job.id)
+        dedupedSkipped++
+      } catch (e) {
+        log.error('event_job_recovery_dedupe_failed', {
+          jobId: job.id,
+          error: String(e?.message || e),
+        })
+      }
+      continue
+    }
+    seenPayloadKey.add(k)
+
+    // Emit first: listener persists the new job synchronously (see JobStore.create),
+    // then we drop the stale file so restarts only retry real leftovers.
+    try {
+      events.emit(job.type, job.payload)
+      recovered++
+    } catch (e) {
+      log.error('event_job_recovery_emit_failed', {
+        jobId: job.id,
+        type: job.type,
+        error: String(e?.message || e),
+      })
+      continue
+    }
+
+    try {
+      await store.remove(job.id)
+    } catch (e) {
+      log.error('event_job_recovery_remove_failed', {
+        jobId: job.id,
+        error: String(e?.message || e),
+      })
+    }
+  }
+
+  log.info('event_jobs_recovery_done', {
+    recovered,
+    dedupedSkipped,
+    unknownType,
+    quarantinedCorrupt,
+  })
+}
+
+/** Deterministic JSON stringify used for payload dedupe keys. */
+function stableStringify(value) {
+  if (value === undefined || value === null) return 'null'
+  if (typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) {
+    return '[' + value.map(stableStringify).join(',') + ']'
+  }
+  const keys = Object.keys(value).sort()
+  return (
+    '{' +
+    keys.map((k) => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') +
+    '}'
+  )
+}
+
+/**
+ * Delete completed/ files older than EVENT_JOBS_RETENTION_DAYS (default 30).
+ * Set EVENT_JOBS_RETENTION_DAYS=0 (or negative) to keep them forever.
+ */
+async function pruneCompleted(store) {
+  const days = Number(process.env.EVENT_JOBS_RETENTION_DAYS ?? 30)
+  if (!Number.isFinite(days) || days <= 0) return
+
+  let entries
+  try {
+    entries = await store.listCompletedMeta()
+  } catch (e) {
+    log.error('event_jobs_retention_list_failed', { error: String(e?.message || e) })
+    return
+  }
+  if (!entries.length) return
+
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000
+  let removed = 0
+  for (const e of entries) {
+    if (e.mtimeMs < cutoffMs) {
+      await store.removeCompletedFile(e.fullPath)
+      removed++
+    }
+  }
+  if (removed) {
+    log.info('event_jobs_retention_pruned', { removed, retentionDays: days })
+  }
 }
 
 module.exports = { registerHandlers }

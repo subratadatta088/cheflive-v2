@@ -10,7 +10,10 @@ class PurchaseService {
   }
 
   async create(payload) {
-    const created = await this.models.purchase.create(payload)
+    const created = await this.models.purchase.create({
+      ...payload,
+      created_by: this.user?.id ?? null,
+    })
     events.emit(EventTypes.PurchaseEntryCreated, {
       organization_id: created.organization_id,
       purchase_id: created.id,
