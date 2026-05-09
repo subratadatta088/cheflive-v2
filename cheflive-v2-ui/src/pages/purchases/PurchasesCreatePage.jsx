@@ -173,6 +173,7 @@ export function PurchasesCreatePage() {
       return zodToFormikErrors(res.error)
     },
     onSubmit: async (values, helpers) => {
+      if (!confirm('Are you sure you want to save this purchase?')) return
       helpers.setStatus(undefined)
       const originIdNum = Number(values.originId)
       const items = []

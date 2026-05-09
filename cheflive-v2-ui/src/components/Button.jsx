@@ -1,7 +1,7 @@
 import React from 'react'
 
 const BASE =
-  'inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ' +
+  'inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-1 text-sm font-medium transition ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 ' +
   'disabled:opacity-50 disabled:pointer-events-none cursor-pointer'
 
