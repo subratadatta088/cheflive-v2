@@ -35,6 +35,8 @@ class PurchasesController {
         return res.status(400).json({ error: 'Origin organization mismatch' })
       if (msg.includes('Ingredient organization mismatch'))
         return res.status(400).json({ error: 'Ingredient organization mismatch' })
+      if (msg.includes('transfer_to must differ')) return res.status(400).json({ error: msg })
+      if (msg.includes('Invalid transfer_to')) return res.status(400).json({ error: msg })
       throw e
     }
   }

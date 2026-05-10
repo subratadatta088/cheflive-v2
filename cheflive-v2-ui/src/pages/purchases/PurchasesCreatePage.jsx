@@ -380,6 +380,29 @@ export function PurchasesCreatePage() {
     return null
   }
 
+  const reloadOriginsAfterCreate = useCallback(
+    async (created) => {
+      try {
+        const { items } = await listOrigins({ limit: 100, is_active: true })
+        const opts = items.map((o) => ({
+          id: o?.id,
+          name: o?.name ?? '',
+          is_default: Number(o?.is_default ?? 0) === 1,
+        }))
+        setOriginOptions(opts)
+
+        const idNum = created?.id != null ? Number(created.id) : NaN
+        const isDef = Number(created?.is_default ?? 0) === 1
+        if (isDef && Number.isFinite(idNum) && idNum > 0) {
+          formik.setFieldValue('originId', String(idNum))
+        }
+      } catch (e) {
+        console.error('[Origins reload after create failed]', e)
+      }
+    },
+    [formik.setFieldValue],
+  )
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -717,7 +740,7 @@ export function PurchasesCreatePage() {
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-slate-900">Create purchase</h2>
-        <AddOriginButton />
+        <AddOriginButton onCreated={reloadOriginsAfterCreate} />
       </div>
 
       <form

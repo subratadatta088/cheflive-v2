@@ -63,6 +63,22 @@ async function onPurchaseCreated(ctx) {
     note: `Auto transfer from purchase #${purchase.id}`,
     items: transferItems,
   })
+
+  const transferToRaw = payload.transfer_to
+  if (transferToRaw !== undefined && transferToRaw !== null) {
+    const transferTo = Number(transferToRaw)
+    if (!Number.isFinite(transferTo) || transferTo <= 0) throw new Error('Invalid transfer_to')
+    if (transferTo === Number(purchase.origin_id)) throw new Error('transfer_to must differ from origin_id')
+
+    await transferService.create({
+      organization_id: purchase.organization_id,
+      from_origin_id: purchase.origin_id,
+      to_origin_id: transferTo,
+      transfer_date: purchase.date,
+      note: `Auto transfer after purchase #${purchase.id}`,
+      items: transferItems,
+    })
+  }
 }
 
 // For now, updates/deletes are handled by emitting TransferEntry* from the service layer.

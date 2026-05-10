@@ -11,6 +11,7 @@ import { InventoryIngredientBulkEditPage } from './pages/inventory/ingredient/In
 import { InventoryPreparationsPage } from './pages/inventory/preparation/InventoryPreparationsPage.jsx'
 import { InventoryPreparationCreatePage } from './pages/inventory/preparation/InventoryPreparationCreatePage.jsx'
 import { PurchasesCreatePage } from './pages/purchases/PurchasesCreatePage.jsx'
+import { PurchasesEditPage } from './pages/purchases/PurchasesEditPage.jsx'
 import { PurchasesHistoryPage } from './pages/purchases/PurchasesHistoryPage.jsx'
 import { TransfersCreatePage } from './pages/transfers/TransfersCreatePage.jsx'
 import { TransfersHistoryPage } from './pages/transfers/TransfersHistoryPage.jsx'
@@ -85,7 +86,7 @@ function AppShell() {
           }}
         />
       ) : null}
-      <main className={isAuthRoute ? 'min-h-screen px-4 py-8' : 'mx-auto max-w-8xl px-4 py-4'}>
+      <main className={isAuthRoute ? 'min-h-screen px-4 py-8' : 'mx-auto max-w-8xl px-4 '}>
         <div>
           <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
@@ -161,6 +162,14 @@ function AppShell() {
               element={
                 <RequireAuth>
                   <PurchasesHistoryPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/purchases/:id/edit"
+              element={
+                <RequireAuth>
+                  <PurchasesEditPage />
                 </RequireAuth>
               }
             />

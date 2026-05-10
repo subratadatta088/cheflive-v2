@@ -1,11 +1,12 @@
 const { PurchaseModel } = require('../../../models/PurchaseModel')
 const {
+  PurchaseApiRowSchema,
   PurchaseCreateInternalSchema,
   PurchaseIdSchema,
   PurchaseRowSchema,
   PurchaseUpdateSchema,
 } = require('../../../models/purchase/schema')
-const { PurchaseItemRowSchema } = require('../../../models/purchaseItem/schema')
+const { PurchaseItemApiRowSchema, PurchaseItemRowSchema } = require('../../../models/purchaseItem/schema')
 const { openSqlite } = require('../db')
 const { applyStockMovement } = require('../stock/applyStockMovement')
 
@@ -65,8 +66,53 @@ function normalizePurchaseRow(row) {
   return PurchaseRowSchema.parse(row)
 }
 
+function normalizePurchaseApiRow(row) {
+  return PurchaseApiRowSchema.parse(row)
+}
+
 function normalizeItemRow(row) {
   return PurchaseItemRowSchema.parse(row)
+}
+
+function normalizePurchaseItemApiRow(row) {
+  return PurchaseItemApiRowSchema.parse(row)
+}
+
+/** Single query: purchase_items ⨝ ingredients for one or many purchases. */
+async function fetchPurchaseItemsJoined(db, organization_id, purchaseIds) {
+  const ids = Array.isArray(purchaseIds)
+    ? [...new Set(purchaseIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+    : []
+  if (!ids.length) return []
+  const placeholders = ids.map(() => '?').join(', ')
+  return await all(
+    db,
+    `SELECT pi.*, i.name AS ingredient_name
+     FROM purchase_items pi
+     LEFT JOIN ingredients i
+       ON i.id = pi.ingredient_id
+      AND i.organization_id = pi.organization_id
+      AND (i.deleted_at IS NULL OR i.deleted_at = '')
+     WHERE pi.organization_id = ?
+       AND pi.purchase_id IN (${placeholders})
+       AND (pi.deleted_at IS NULL OR pi.deleted_at = '')
+     ORDER BY pi.purchase_id ASC, pi.id ASC`,
+    [organization_id, ...ids]
+  )
+}
+
+/** Σ(qty × unit_price) over purchase line items (lines without unit_price contribute 0). */
+function subtotalFromPurchaseItems(items) {
+  const list = Array.isArray(items) ? items : []
+  let subtotal = 0
+  for (const it of list) {
+    const q = Number(it.qty)
+    const rawPrice = it.unit_price
+    const price =
+      rawPrice === null || rawPrice === undefined || rawPrice === '' ? NaN : Number(rawPrice)
+    if (Number.isFinite(q) && Number.isFinite(price)) subtotal += q * price
+  }
+  return subtotal
 }
 
 class PurchaseSqliteDAL extends PurchaseModel {
@@ -149,22 +195,29 @@ class PurchaseSqliteDAL extends PurchaseModel {
 
   async getById(id) {
     const pid = PurchaseIdSchema.parse(id)
-    const row = await get(this.db, `SELECT * FROM purchases WHERE id = ?`, [pid])
-    if (!row) return null
-    const purchase = normalizePurchaseRow(row)
-
-    const itemRows = await all(
+    const row = await get(
       this.db,
-      `SELECT * FROM purchase_items
-       WHERE organization_id = ?
-         AND purchase_id = ?
-         AND (deleted_at IS NULL OR deleted_at = '')`,
-      [purchase.organization_id, purchase.id]
+      `SELECT p.*, o.name AS origin_name, o.type AS origin_type
+       FROM purchases p
+       LEFT JOIN origins o
+         ON o.id = p.origin_id
+        AND o.organization_id = p.organization_id
+        AND (o.deleted_at IS NULL OR o.deleted_at = '')
+       WHERE p.id = ?`,
+      [pid]
     )
+    if (!row) return null
+    const purchase = normalizePurchaseApiRow(row)
+
+    const itemRows = await fetchPurchaseItemsJoined(this.db, purchase.organization_id, [purchase.id])
+
+    const items = itemRows.map(normalizePurchaseItemApiRow)
+    const subtotal = subtotalFromPurchaseItems(items)
 
     return {
       ...purchase,
-      items: itemRows.map(normalizeItemRow),
+      subtotal,
+      items,
     }
   }
 
@@ -174,46 +227,46 @@ class PurchaseSqliteDAL extends PurchaseModel {
   }
 
   async list({ organization_id, page, limit, q, origin_id }) {
-    const where = ['organization_id = ?', `(deleted_at IS NULL OR deleted_at = '')`]
-    const params = [organization_id]
+    const scopedWhere = [
+      'p.organization_id = ?',
+      '(p.deleted_at IS NULL OR p.deleted_at = \'\')',
+    ]
+    const scopedParams = [organization_id]
 
     if (q) {
-      where.push('note LIKE ?')
-      params.push(`%${q}%`)
+      scopedWhere.push('p.note LIKE ?')
+      scopedParams.push(`%${q}%`)
     }
 
     if (origin_id) {
-      where.push('origin_id = ?')
-      params.push(origin_id)
+      scopedWhere.push('p.origin_id = ?')
+      scopedParams.push(origin_id)
     }
 
     const offset = (page - 1) * limit
 
     const rows = await all(
       this.db,
-      `SELECT * FROM purchases
-       WHERE ${where.join(' AND ')}
-       ORDER BY id DESC
+      `SELECT p.*, o.name AS origin_name, o.type AS origin_type
+       FROM purchases p
+       LEFT JOIN origins o
+         ON o.id = p.origin_id
+        AND o.organization_id = p.organization_id
+        AND (o.deleted_at IS NULL OR o.deleted_at = '')
+       WHERE ${scopedWhere.join(' AND ')}
+       ORDER BY p.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...scopedParams, limit, offset]
     )
 
-    const purchases = rows.map(normalizePurchaseRow)
+    const purchases = rows.map(normalizePurchaseApiRow)
     if (!purchases.length) return purchases.map((p) => ({ ...p, items: [] }))
 
     const purchaseIds = purchases.map((p) => p.id)
-    const placeholders = purchaseIds.map(() => '?').join(', ')
 
-    const itemRows = await all(
-      this.db,
-      `SELECT * FROM purchase_items
-       WHERE organization_id = ?
-         AND purchase_id IN (${placeholders})
-         AND (deleted_at IS NULL OR deleted_at = '')`,
-      [organization_id, ...purchaseIds]
-    )
+    const itemRows = await fetchPurchaseItemsJoined(this.db, organization_id, purchaseIds)
 
-    const items = itemRows.map(normalizeItemRow)
+    const items = itemRows.map(normalizePurchaseItemApiRow)
     const byPurchase = new Map()
     for (const it of items) {
       const pid = it.purchase_id
@@ -223,10 +276,15 @@ class PurchaseSqliteDAL extends PurchaseModel {
       byPurchase.set(pid, arr)
     }
 
-    return purchases.map((p) => ({
-      ...p,
-      items: byPurchase.get(p.id) || [],
-    }))
+    return purchases.map((p) => {
+      const items = byPurchase.get(p.id) || []
+      const subtotal = subtotalFromPurchaseItems(items)
+      return {
+        ...p,
+        subtotal,
+        items,
+      }
+    })
   }
 
   async updateById(id, data) {

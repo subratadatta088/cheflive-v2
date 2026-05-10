@@ -4,15 +4,15 @@ import { Button } from './Button.jsx'
 import { AddOriginModal } from './AddOriginModal.jsx'
 
 /**
- * Reusable "Add origin" button (UI-only for now).
- * Can be dropped into Purchases page and Origins page later.
+ * Reusable "Add origin" button with create modal.
  *
  * @param {{
  *   className?: string,
  *   variant?: 'primary' | 'secondary' | 'warning' | 'danger',
+ *   onCreated?: (origin: unknown) => void,
  * }} props
  */
-export function AddOriginButton({ className = '', variant = 'secondary' }) {
+export function AddOriginButton({ className = '', variant = 'secondary', onCreated }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -21,7 +21,7 @@ export function AddOriginButton({ className = '', variant = 'secondary' }) {
         <Plus className="h-4 w-4" aria-hidden="true" />
         Add origin
       </Button>
-      <AddOriginModal open={open} onClose={() => setOpen(false)} />
+      <AddOriginModal open={open} onClose={() => setOpen(false)} onCreated={onCreated} />
     </>
   )
 }

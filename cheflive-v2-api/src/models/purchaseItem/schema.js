@@ -41,6 +41,11 @@ const PurchaseItemRowSchema = z.object({
   deleted_at: z.string().optional().nullable(),
 })
 
+/** Row when `purchase_items` is joined with `ingredients` (list/getById). */
+const PurchaseItemApiRowSchema = PurchaseItemRowSchema.extend({
+  ingredient_name: z.string().nullable().optional(),
+})
+
 const PurchaseItemListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
@@ -54,5 +59,6 @@ module.exports = {
   PurchaseItemCreateSchema,
   PurchaseItemUpdateSchema,
   PurchaseItemRowSchema,
+  PurchaseItemApiRowSchema,
   PurchaseItemListQuerySchema,
 }

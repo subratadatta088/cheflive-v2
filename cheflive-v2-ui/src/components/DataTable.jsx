@@ -48,6 +48,7 @@ import { Search } from 'lucide-react'
  *   emptyText?: string,
  *   className?: string,
  *   rowSelection?: { selectedIds: number[], onChange: (ids: number[]) => void, getRowId?: (row: T) => number },
+ *   renderTableFooterCells?: () => React.ReactNode,
  }} props
  */
 export function DataTable({
@@ -74,6 +75,7 @@ export function DataTable({
   emptyText = 'No results',
   className = '',
   rowSelection = null,
+  renderTableFooterCells = null,
 }) {
   const [searchState, setSearchState] = useState(initialSearch)
   const [pageSizeState, setPageSizeState] = useState(initialPageSize)
@@ -304,6 +306,16 @@ export function DataTable({
               ))
             )}
           </tbody>
+          {typeof renderTableFooterCells === 'function' ? (
+            <tfoot className="bg-slate-50">
+              <tr>
+                {rowSelection ? (
+                  <td className="border-t border-slate-200 px-2 py-2" aria-hidden="true" />
+                ) : null}
+                {renderTableFooterCells()}
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2">

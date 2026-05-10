@@ -14,11 +14,18 @@ class PurchaseService {
       ...payload,
       created_by: this.user?.id ?? null,
     })
+    const transferTo =
+      payload.transfer_to !== undefined && payload.transfer_to !== null
+        ? Number(payload.transfer_to)
+        : undefined
     events.emit(EventTypes.PurchaseEntryCreated, {
       organization_id: created.organization_id,
       purchase_id: created.id,
       actor_user_id: this.user?.id ?? null,
       occurred_at: created.date || new Date().toISOString(),
+      ...(transferTo !== undefined && Number.isFinite(transferTo) && transferTo > 0
+        ? { transfer_to: transferTo }
+        : {}),
     })
     return created
   }
