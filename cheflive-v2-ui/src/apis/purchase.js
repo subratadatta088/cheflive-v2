@@ -56,3 +56,47 @@ export async function deletePurchaseById(id) {
   const res = await api.delete(`purchases/${id}`)
   return res.data ?? {}
 }
+
+/**
+ * POST /purchases/grouped-items
+ *
+ * Aggregate line items across multiple purchases, grouped by ingredient. Quantities
+ * are normalized to each ingredient's default unit; `unit_price` is intentionally
+ * omitted because the same ingredient can have different prices across purchases.
+ * Use the per-row `subtotal` (money spent on that ingredient) instead.
+ *
+ * @param {{ ids: Array<number|string>, organization_id?: number }} payload
+ * @returns {Promise<{
+ *   purchase_ids: number[],
+ *   found_purchase_ids: number[],
+ *   missing_ids: number[],
+ *   items: Array<{
+ *     ingredient_id: number,
+ *     ingredient_name: string|null,
+ *     qty: number,
+ *     unit: string,
+ *     subtotal: number,
+ *   }>,
+ *   subtotal: number,
+ * }>}
+ */
+export async function getGroupedPurchaseItems(payload) {
+  const idsRaw = Array.isArray(payload?.ids) ? payload.ids : []
+  const ids = [...new Set(idsRaw.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
+  const body = { ids }
+  const orgId = payload?.organization_id != null ? Number(payload.organization_id) : NaN
+  if (Number.isFinite(orgId) && orgId > 0) body.organization_id = orgId
+  const res = await api.post('purchases/grouped-items', body)
+  const data = res.data ?? {}
+  return {
+    purchase_ids: Array.isArray(data?.purchase_ids) ? data.purchase_ids.map((v) => Number(v)).filter(Number.isFinite) : ids,
+    found_purchase_ids: Array.isArray(data?.found_purchase_ids)
+      ? data.found_purchase_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : [],
+    missing_ids: Array.isArray(data?.missing_ids)
+      ? data.missing_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : [],
+    items: Array.isArray(data?.items) ? data.items : [],
+    subtotal: Number.isFinite(Number(data?.subtotal)) ? Number(data.subtotal) : 0,
+  }
+}

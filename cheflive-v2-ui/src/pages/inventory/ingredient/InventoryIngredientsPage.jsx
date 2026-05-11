@@ -96,15 +96,35 @@ function InventoryIngredientsInnerPage() {
     { key: 'item_code', header: 'Item code', className: 'w-[120px]', render: (r) => <span className="tabular-nums">{r.item_code ?? '—'}</span> },
     { key: 'name', header: 'Ingredient' },
     { key: 'category_name', header: 'Category' },
-    { key: 'unit', header: 'Unit', className: 'w-[90px]' },
     {
-      key: 'unit_conversions',
-      header: 'Conversions',
-      className: 'w-[110px]',
-      cellClassName: 'text-center',
+      key: 'unit',
+      header: 'Unit',
+      className: 'w-[200px]',
       render: (r) => {
-        const n = Array.isArray(r?.unit_conversions) ? r.unit_conversions.length : 0
-        return <span className="tabular-nums">{n}</span>
+        const defaultUnit = String(r?.unit ?? '').trim()
+        const conversions = Array.isArray(r?.unit_conversions) ? r.unit_conversions : []
+        const altUnits = Array.from(
+          new Set(
+            conversions
+              .flatMap((c) => [c?.from_unit, c?.to_unit])
+              .map((u) => String(u ?? '').trim())
+              .filter((u) => u && u !== defaultUnit),
+          ),
+        )
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="font-medium text-slate-900">{defaultUnit || '—'}</span>
+            {altUnits.map((u) => (
+              <span
+                key={u}
+                className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-medium text-slate-600"
+                title={`Alternative unit: ${u}`}
+              >
+                {u}
+              </span>
+            ))}
+          </div>
+        )
       },
     },
     {
@@ -336,7 +356,7 @@ function InventoryIngredientsInnerPage() {
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Breadcrumb items={[{ label: 'Inventory' }, { label: 'Ingredients' }]} />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 mt-4">
           {selectedRowIds.length > 0 ? (
             <>
               <span

@@ -3,19 +3,19 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { Button } from '../../components/Button.jsx'
 import { getPurchaseById, updatePurchaseById } from '../../apis/purchase.js'
-import { listOrigins } from '../../apis/origin.js'
 import { useToast } from '../../components/Toaster.jsx'
+import { OriginsProvider, useOrigins } from '../../context/OriginsContext.jsx'
 
-export function PurchasesEditPage() {
+function PurchasesEditInnerPage() {
   const { id: idParam } = useParams()
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const { origins: originOptions, loading: originsLoading, error: originsError } = useOrigins()
   const id = Number(idParam)
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [originOptions, setOriginOptions] = useState(() => /** @type {{ id: number, name: string }[]} */ ([]))
   const [originId, setOriginId] = useState('')
   const [date, setDate] = useState('')
   const [note, setNote] = useState('')
@@ -29,23 +29,7 @@ export function PurchasesEditPage() {
     setError('')
     setLoading(true)
     try {
-      const [origRes, purRes] = await Promise.all([
-        listOrigins({ limit: 200, is_active: true }),
-        getPurchaseById(id),
-      ])
-      const oItems = Array.isArray(origRes?.items) ? origRes.items : []
-      setOriginOptions(
-        oItems
-          .map((o) => {
-            const oid = Number(o?.id)
-            if (!Number.isFinite(oid) || oid <= 0) return null
-            const nameRaw = o?.name != null ? String(o.name).trim() : ''
-            return { id: oid, name: nameRaw || `Origin #${oid}` }
-          })
-          .filter(Boolean)
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      )
-
+      const purRes = await getPurchaseById(id)
       const p = purRes?.purchase ?? purRes
       if (!p?.id) {
         setError('Purchase not found.')
@@ -65,6 +49,13 @@ export function PurchasesEditPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!originsError) return
+    setError((prev) => prev || originsError)
+  }, [originsError])
+
+  const isLoading = loading || originsLoading
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -112,7 +103,7 @@ export function PurchasesEditPage() {
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
         ) : null}
 
-        {loading ? (
+        {isLoading ? (
           <p className="mt-6 text-sm text-slate-600">Loading…</p>
         ) : (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -166,5 +157,13 @@ export function PurchasesEditPage() {
         )}
       </div>
     </section>
+  )
+}
+
+export function PurchasesEditPage() {
+  return (
+    <OriginsProvider>
+      <PurchasesEditInnerPage />
+    </OriginsProvider>
   )
 }

@@ -57,6 +57,26 @@ const PurchaseListQuerySchema = z.object({
   organization_id: z.coerce.number().int().positive().optional(),
 })
 
+/**
+ * Body for POST /purchases/grouped-items.
+ * Accepts a list of purchase ids and returns line items grouped by ingredient.
+ * Empty `ids` is allowed and yields an empty grouping.
+ */
+const PurchaseGroupItemsBodySchema = z.object({
+  organization_id: z.coerce.number().int().positive().optional(),
+  ids: z
+    .preprocess((v) => {
+      if (v === undefined || v === null || v === '') return []
+      const parts = Array.isArray(v) ? v : [v]
+      const flat = parts
+        .flatMap((x) => String(x ?? '').split(','))
+        .map((s) => s.trim())
+        .filter(Boolean)
+      return flat
+    }, z.array(z.coerce.number().int().positive()).max(100))
+    .default([]),
+})
+
 module.exports = {
   PurchaseIdSchema,
   PurchaseCreateSchema,
@@ -65,4 +85,5 @@ module.exports = {
   PurchaseRowSchema,
   PurchaseApiRowSchema,
   PurchaseListQuerySchema,
+  PurchaseGroupItemsBodySchema,
 }

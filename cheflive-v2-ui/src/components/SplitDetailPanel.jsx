@@ -28,7 +28,7 @@ export function SplitDetailPanel({ open, onClose, title, children, className = '
   return (
     <aside
       className={
-        'flex h-[100dvh] w-full shrink-0 flex-col bg-gray-50 lg:w-1/2 lg:min-w-[50%] lg:max-w-[840px] lg:border-l lg:border-t-0 lg:border-slate-200 px-4' +
+        'flex h-[94dvh] w-full shrink-0 flex-col bg-gray-50 lg:w-1/2 lg:min-w-[50%] lg:max-w-[840px] lg:border-l lg:border-t-0 lg:border-slate-200 px-4' +
         className
       }
       aria-label="Detail panel"
@@ -44,7 +44,12 @@ export function SplitDetailPanel({ open, onClose, title, children, className = '
           <X className="h-5 w-5" strokeWidth={2} />
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">{children}</div>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ msOverflowStyle: 'none' }}
+      >
+        {children}
+      </div>
     </aside>
   )
 }

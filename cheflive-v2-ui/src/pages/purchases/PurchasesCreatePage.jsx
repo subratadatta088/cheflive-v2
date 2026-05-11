@@ -6,7 +6,6 @@ import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { Button } from '../../components/Button.jsx'
 import { LineItemsGrid } from '../../components/LineItemsGrid.jsx'
 import { AddOriginButton } from '../../components/AddOriginButton.jsx'
-import { listOrigins } from '../../apis/origin.js'
 import {
   getIngredientRunningStockDefault,
   listIngredients,
@@ -21,6 +20,7 @@ import {
   PURCHASE_FIELD_INGREDIENT_ID,
   PURCHASE_FIELD_ITEM_CODE,
 } from '../../shortcuts/purchaseCreateDom.js'
+import { OriginsProvider, useOrigins } from '../../context/OriginsContext.jsx'
 
 function newRow() {
   return {
@@ -129,11 +129,14 @@ function formatLineTotal(row) {
   return t ? t.toFixed(2) : ''
 }
 
-/** @param {{ id: unknown, is_default?: boolean }[]} originOptions */
-function buildFreshPurchaseValues(originOptions) {
+/**
+ * @param {{ id: unknown }[]} origins
+ * @param {{ id: number } | null} defaultOrigin
+ */
+function buildFreshPurchaseValues(origins, defaultOrigin) {
   const nextOrigin =
-    originOptions.find((o) => o.is_default && o.id)?.id ??
-    originOptions.find((o) => o.id)?.id ??
+    (defaultOrigin?.id ? Number(defaultOrigin.id) : null) ??
+    origins.find((o) => o?.id)?.id ??
     ''
   return {
     purchaseDate: todayLocalDate(),
@@ -144,9 +147,9 @@ function buildFreshPurchaseValues(originOptions) {
   }
 }
 
-export function PurchasesCreatePage() {
+function PurchasesCreateInnerPage() {
   const { showToast } = useToast()
-  const [originOptions, setOriginOptions] = useState([])
+  const { origins: originOptions, defaultOrigin, addOrigin } = useOrigins()
   /** Full Formik snapshot (async origins effect). */
   const valuesRef = useRef(null)
   /**
@@ -212,7 +215,7 @@ export function PurchasesCreatePage() {
       try {
         const data = await createPurchase(payload)
         console.info('[Purchase created]', data)
-        helpers.resetForm({ values: buildFreshPurchaseValues(originOptions) })
+        helpers.resetForm({ values: buildFreshPurchaseValues(originOptions, defaultOrigin) })
         showToast({ text: 'Purchase saved successfully.', theme: 'success', duration: 5000 })
       } catch (e) {
         const apiMsg = e?.response?.data?.error || e?.message || 'Failed to save purchase.'
@@ -240,9 +243,9 @@ export function PurchasesCreatePage() {
   }
 
   const handleResetPurchaseForm = useCallback(() => {
-    formik.resetForm({ values: buildFreshPurchaseValues(originOptions) })
+    formik.resetForm({ values: buildFreshPurchaseValues(originOptions, defaultOrigin) })
     formik.setStatus(undefined)
-  }, [originOptions, formik.resetForm, formik.setStatus])
+  }, [originOptions, defaultOrigin, formik.resetForm, formik.setStatus])
 
   usePurchaseCreateShortcuts({
     rowsRef,
@@ -380,62 +383,29 @@ export function PurchasesCreatePage() {
     return null
   }
 
-  const reloadOriginsAfterCreate = useCallback(
-    async (created) => {
-      try {
-        const { items } = await listOrigins({ limit: 100, is_active: true })
-        const opts = items.map((o) => ({
-          id: o?.id,
-          name: o?.name ?? '',
-          is_default: Number(o?.is_default ?? 0) === 1,
-        }))
-        setOriginOptions(opts)
-
-        const idNum = created?.id != null ? Number(created.id) : NaN
-        const isDef = Number(created?.is_default ?? 0) === 1
-        if (isDef && Number.isFinite(idNum) && idNum > 0) {
-          formik.setFieldValue('originId', String(idNum))
-        }
-      } catch (e) {
-        console.error('[Origins reload after create failed]', e)
+  const handleOriginCreated = useCallback(
+    (created) => {
+      addOrigin(created)
+      const idNum = created?.id != null ? Number(created.id) : NaN
+      const isDef = Number(created?.is_default ?? 0) === 1
+      if (isDef && Number.isFinite(idNum) && idNum > 0) {
+        formik.setFieldValue('originId', String(idNum))
       }
     },
-    [formik.setFieldValue],
+    [addOrigin, formik.setFieldValue],
   )
 
+  // Seed the originId field with the default (or first) origin once the context loads,
+  // but never overwrite an existing selection.
+  const defaultOriginId = defaultOrigin?.id ?? null
+  const firstOriginId = originOptions[0]?.id ?? null
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        // is active true. a boolean value.
-        const { items } = await listOrigins({ limit: 100, is_active: true })
-        if (cancelled) return
-        const opts = items.map((o) => ({
-          id: o?.id,
-          name: o?.name ?? '',
-          is_default: Number(o?.is_default ?? 0) === 1,
-        }))
-        setOriginOptions(opts)
-
-        const def = opts.find((o) => o.is_default && o.id)
-        const first = opts.find((o) => o.id)
-        const pick = def?.id ? String(def.id) : first?.id ? String(first.id) : ''
-        if (pick && !valuesRef.current?.originId) {
-          formik.setFieldValue('originId', pick)
-        }
-      } catch (e) {
-        if (cancelled) return
-        console.error('[Origins load failed]', e)
-        setOriginOptions([])
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-    // Origins once on mount; default origin applied only if still empty.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional single fetch
-  }, [])
+    if (valuesRef.current?.originId) return
+    const pick = defaultOriginId ?? firstOriginId
+    if (!pick) return
+    formik.setFieldValue('originId', String(pick))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- formik.setFieldValue is stable; intentional one-shot seed.
+  }, [defaultOriginId, firstOriginId])
 
   useEffect(() => {
     let cancelled = false
@@ -740,7 +710,7 @@ export function PurchasesCreatePage() {
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-slate-900">Create purchase</h2>
-        <AddOriginButton onCreated={reloadOriginsAfterCreate} />
+        <AddOriginButton onCreated={handleOriginCreated} />
       </div>
 
       <form
@@ -903,5 +873,13 @@ export function PurchasesCreatePage() {
       </div>
       </form>
     </section>
+  )
+}
+
+export function PurchasesCreatePage() {
+  return (
+    <OriginsProvider>
+      <PurchasesCreateInnerPage />
+    </OriginsProvider>
   )
 }

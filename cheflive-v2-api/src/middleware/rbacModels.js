@@ -329,6 +329,12 @@ function withScopedModels(req, res, next) {
         list: async (query) => {
           return await purchaseDal.list({ ...query, organization_id: req.user.organization_id })
         },
+        groupItemsByIngredient: async ({ purchase_ids } = {}) => {
+          return await purchaseDal.groupItemsByIngredient({
+            organization_id: req.user.organization_id,
+            purchase_ids,
+          })
+        },
         updateById: async (id, data) => {
           const existing = await purchaseDal.getById(id)
           if (!existing) return null
@@ -599,6 +605,12 @@ function withScopedModels(req, res, next) {
       },
       list: async (query) => {
         return await purchaseDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      groupItemsByIngredient: async ({ purchase_ids } = {}) => {
+        return await purchaseDal.groupItemsByIngredient({
+          organization_id: req.user.organization_id,
+          purchase_ids,
+        })
       },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),

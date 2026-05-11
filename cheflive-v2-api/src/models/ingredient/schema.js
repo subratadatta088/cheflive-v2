@@ -1,5 +1,6 @@
 const { z } = require('zod')
 const { BooleanFlagSchema } = require('../../utils/zod')
+const { UnitConversionRowSchema } = require('../unitConversion/schema')
 
 const IngredientIdSchema = z.number().int().positive()
 const OrganizationIdSchema = z.number().int().positive()
@@ -41,6 +42,7 @@ const IngredientRowSchema = z.object({
   created_at: z.string().optional().nullable(),
   updated_at: z.string().optional().nullable(),
   deleted_at: z.string().optional().nullable(),
+  unit_conversions: z.array(UnitConversionRowSchema).optional(),
 })
 
 const IngredientListQuerySchema = z.object({

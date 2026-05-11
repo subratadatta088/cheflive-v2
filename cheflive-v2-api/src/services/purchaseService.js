@@ -34,6 +34,14 @@ class PurchaseService {
     return await this.models.purchase.list(query)
   }
 
+  /**
+   * Aggregate line items across multiple purchases, grouped by ingredient.
+   * @param {{ organization_id: number, purchase_ids: number[] }} params
+   */
+  async groupItemsByIngredient(params) {
+    return await this.models.purchase.groupItemsByIngredient(params)
+  }
+
   async getById(id) {
     return await this.models.purchase.getById(id)
   }

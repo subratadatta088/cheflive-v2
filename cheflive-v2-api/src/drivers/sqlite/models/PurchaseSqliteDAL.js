@@ -287,6 +287,191 @@ class PurchaseSqliteDAL extends PurchaseModel {
     })
   }
 
+  /**
+   * Group purchase line items by ingredient across one or more purchases (same org scope).
+   *
+   * For each line, qty is converted to the ingredient's default unit using
+   * `ingredient_unit_conversions` (same rule as `processPurchaseCreated`). Since the same
+   * ingredient can be purchased at different prices over time, a single `unit_price` would be
+   * misleading; instead each grouped row exposes the aggregated money spent on that ingredient
+   * as `subtotal`. The top-level `subtotal` is the sum of all per-ingredient subtotals.
+   *
+   * @param {{ organization_id: number, purchase_ids: number[] }} params
+   * @returns {Promise<{
+   *   purchase_ids: number[],
+   *   found_purchase_ids: number[],
+   *   missing_ids: number[],
+   *   items: Array<{
+   *     ingredient_id: number,
+   *     ingredient_name: string|null,
+   *     qty: number,
+   *     unit: string,
+   *     subtotal: number,
+   *   }>,
+   *   subtotal: number,
+   * }>}
+   */
+  async groupItemsByIngredient({ organization_id, purchase_ids }) {
+    const org = Number(organization_id)
+    if (!Number.isFinite(org) || org <= 0) throw new Error('Invalid organization_id')
+
+    const ids = Array.isArray(purchase_ids)
+      ? [...new Set(purchase_ids.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))]
+      : []
+
+    if (!ids.length) {
+      return { purchase_ids: [], found_purchase_ids: [], missing_ids: [], items: [], subtotal: 0 }
+    }
+
+    const placeholders = ids.map(() => '?').join(', ')
+
+    // Resolve which requested ids actually exist for this org (and aren't soft-deleted).
+    const purchaseRows = await all(
+      this.db,
+      `SELECT id
+       FROM purchases
+       WHERE organization_id = ?
+         AND id IN (${placeholders})
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [org, ...ids]
+    )
+    const foundPurchaseIds = purchaseRows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n))
+    const missingIds = ids.filter((id) => !foundPurchaseIds.includes(id))
+
+    if (!foundPurchaseIds.length) {
+      return { purchase_ids: ids, found_purchase_ids: [], missing_ids: missingIds, items: [], subtotal: 0 }
+    }
+
+    const foundPlaceholders = foundPurchaseIds.map(() => '?').join(', ')
+
+    // Fetch all line items joined with the ingredient's default unit/name.
+    const rows = await all(
+      this.db,
+      `SELECT pi.ingredient_id,
+              pi.qty,
+              pi.unit,
+              pi.unit_price,
+              pi.purchase_id,
+              i.name AS ingredient_name,
+              i.unit AS default_unit
+       FROM purchase_items pi
+       LEFT JOIN ingredients i
+         ON i.id = pi.ingredient_id
+        AND i.organization_id = pi.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE pi.organization_id = ?
+         AND pi.purchase_id IN (${foundPlaceholders})
+         AND (pi.deleted_at IS NULL OR pi.deleted_at = '')`,
+      [org, ...foundPurchaseIds]
+    )
+
+    if (!rows.length) {
+      return { purchase_ids: ids, found_purchase_ids: foundPurchaseIds, missing_ids: missingIds, items: [], subtotal: 0 }
+    }
+
+    // Pre-fetch conversions for all involved ingredients.
+    const ingredientIds = [...new Set(rows.map((r) => Number(r.ingredient_id)).filter((n) => Number.isFinite(n) && n > 0))]
+    let convRows = []
+    if (ingredientIds.length) {
+      const convPlaceholders = ingredientIds.map(() => '?').join(', ')
+      convRows = await all(
+        this.db,
+        `SELECT ingredient_id, from_unit, to_unit, factor
+         FROM ingredient_unit_conversions
+         WHERE organization_id = ?
+           AND ingredient_id IN (${convPlaceholders})
+           AND (deleted_at IS NULL OR deleted_at = '')`,
+        [org, ...ingredientIds]
+      )
+    }
+
+    const convKey = (ingId, fromUnit, toUnit) => `${ingId}|${fromUnit}|${toUnit}`
+    const convMap = new Map()
+    for (const c of convRows) {
+      const k = convKey(Number(c.ingredient_id), String(c.from_unit || '').trim(), String(c.to_unit || '').trim())
+      const f = Number(c.factor)
+      if (Number.isFinite(f) && f > 0) convMap.set(k, f)
+    }
+
+    const grouped = new Map()
+    for (const r of rows) {
+      const ingredient_id = Number(r.ingredient_id)
+      if (!Number.isFinite(ingredient_id) || ingredient_id <= 0) continue
+
+      const defaultUnit = String(r.default_unit || '').trim()
+      if (!defaultUnit) {
+        // Ingredient missing default unit: skip rather than corrupt totals.
+        continue
+      }
+
+      const rawQty = Number(r.qty)
+      if (!Number.isFinite(rawQty)) continue
+
+      const fromUnit = r.unit ? String(r.unit).trim() : ''
+      let factor = 1
+      if (fromUnit && fromUnit !== defaultUnit) {
+        const f = convMap.get(convKey(ingredient_id, fromUnit, defaultUnit))
+        if (!f) {
+          const err = new Error(
+            `Unit conversion not found for ingredient ${ingredient_id}: ${fromUnit} -> ${defaultUnit}`
+          )
+          err.code = 'UNIT_CONVERSION_NOT_FOUND'
+          throw err
+        }
+        factor = f
+      }
+
+      const qtyDefault = rawQty * factor
+
+      const rawPrice = r.unit_price
+      const priceNum =
+        rawPrice === null || rawPrice === undefined || rawPrice === '' ? NaN : Number(rawPrice)
+      const hasPrice = Number.isFinite(priceNum)
+      // qty (in any unit) × unit_price (per that same unit) = spend (currency), unit-agnostic.
+      const lineTotal = hasPrice ? rawQty * priceNum : 0
+
+      let g = grouped.get(ingredient_id)
+      if (!g) {
+        g = {
+          ingredient_id,
+          ingredient_name: r.ingredient_name ?? null,
+          unit: defaultUnit,
+          qty: 0,
+          subtotal: 0,
+        }
+        grouped.set(ingredient_id, g)
+      }
+
+      g.qty += qtyDefault
+      if (hasPrice) g.subtotal += lineTotal
+    }
+
+    const items = []
+    let subtotal = 0
+    for (const g of grouped.values()) {
+      items.push({
+        ingredient_id: g.ingredient_id,
+        ingredient_name: g.ingredient_name,
+        qty: g.qty,
+        unit: g.unit,
+        subtotal: g.subtotal,
+      })
+      subtotal += g.subtotal
+    }
+
+    items.sort((a, b) =>
+      String(a.ingredient_name || '').localeCompare(String(b.ingredient_name || '')),
+    )
+
+    return {
+      purchase_ids: ids,
+      found_purchase_ids: foundPurchaseIds,
+      missing_ids: missingIds,
+      items,
+      subtotal,
+    }
+  }
+
   async updateById(id, data) {
     const pid = PurchaseIdSchema.parse(id)
     const payload = PurchaseUpdateSchema.parse(data)

@@ -11,6 +11,8 @@ const controller = new PurchasesController()
 
 router.post('/', controller.create)
 
+router.post('/grouped-items', controller.groupItemsByIngredient)
+
 router.get('/', controller.list)
 
 router.get('/:id', controller.getById)
