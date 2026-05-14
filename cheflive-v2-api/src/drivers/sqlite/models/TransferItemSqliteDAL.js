@@ -1,5 +1,6 @@
 const { TransferItemModel } = require('../../../models/TransferItemModel')
 const {
+  TransferItemApiRowSchema,
   TransferItemCreateInternalSchema,
   TransferItemIdSchema,
   TransferItemListQuerySchema,
@@ -64,6 +65,26 @@ function normalizeRow(row) {
   return TransferItemRowSchema.parse(row)
 }
 
+function normalizeApiRow(row) {
+  return TransferItemApiRowSchema.parse(row)
+}
+
+/** transfer_items ⨝ ingredients (same pattern as purchase_items). */
+async function fetchTransferItemJoinedById(db, itemId) {
+  const id = TransferItemIdSchema.parse(itemId)
+  return await get(
+    db,
+    `SELECT ti.*, i.name AS ingredient_name
+     FROM transfer_items ti
+     LEFT JOIN ingredients i
+       ON i.id = ti.ingredient_id
+      AND i.organization_id = ti.organization_id
+      AND (i.deleted_at IS NULL OR i.deleted_at = '')
+     WHERE ti.id = ?`,
+    [id]
+  )
+}
+
 async function loadParentTransfer(db, transferId) {
   return await get(
     db,
@@ -116,29 +137,26 @@ class TransferItemSqliteDAL extends TransferItemModel {
         ]
       )
 
-      const created = await get(this.db, `SELECT * FROM transfer_items WHERE id = ?`, [
-        result.lastID,
-      ])
-      return created ? normalizeRow(created) : null
+      const created = await fetchTransferItemJoinedById(this.db, result.lastID)
+      return created ? normalizeApiRow(created) : null
     })
   }
 
   async getById(id) {
-    const itemId = TransferItemIdSchema.parse(id)
-    const row = await get(this.db, `SELECT * FROM transfer_items WHERE id = ?`, [itemId])
+    const row = await fetchTransferItemJoinedById(this.db, id)
     if (!row) return null
-    return normalizeRow(row)
+    return normalizeApiRow(row)
   }
 
   async list(query) {
     const q = TransferItemListQuerySchema.parse(query)
     if (!q.organization_id) throw new Error('organization_id is required')
 
-    const where = ['organization_id = ?', `(deleted_at IS NULL OR deleted_at = '')`]
+    const where = ['ti.organization_id = ?', `(ti.deleted_at IS NULL OR ti.deleted_at = '')`]
     const params = [q.organization_id]
 
     if (q.transfer_id) {
-      where.push('transfer_id = ?')
+      where.push('ti.transfer_id = ?')
       params.push(q.transfer_id)
     }
 
@@ -146,14 +164,19 @@ class TransferItemSqliteDAL extends TransferItemModel {
 
     const rows = await all(
       this.db,
-      `SELECT * FROM transfer_items
+      `SELECT ti.*, i.name AS ingredient_name
+       FROM transfer_items ti
+       LEFT JOIN ingredients i
+         ON i.id = ti.ingredient_id
+        AND i.organization_id = ti.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
        WHERE ${where.join(' AND ')}
-       ORDER BY id DESC
+       ORDER BY ti.id DESC
        LIMIT ? OFFSET ?`,
       [...params, q.limit, offset]
     )
 
-    return rows.map(normalizeRow)
+    return rows.map(normalizeApiRow)
   }
 
   async updateById(id, data) {
@@ -190,8 +213,8 @@ class TransferItemSqliteDAL extends TransferItemModel {
         itemId,
       ])
 
-      const updated = await get(this.db, `SELECT * FROM transfer_items WHERE id = ?`, [itemId])
-      return updated ? normalizeRow(updated) : null
+      const updated = await fetchTransferItemJoinedById(this.db, itemId)
+      return updated ? normalizeApiRow(updated) : null
     })
   }
 

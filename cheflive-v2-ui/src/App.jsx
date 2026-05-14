@@ -14,6 +14,7 @@ import { PurchasesCreatePage } from './pages/purchases/PurchasesCreatePage.jsx'
 import { PurchasesEditPage } from './pages/purchases/PurchasesEditPage.jsx'
 import { PurchasesHistoryPage } from './pages/purchases/PurchasesHistoryPage.jsx'
 import { TransfersCreatePage } from './pages/transfers/TransfersCreatePage.jsx'
+import { TransfersEditPage } from './pages/transfers/TransfersEditPage.jsx'
 import { TransfersHistoryPage } from './pages/transfers/TransfersHistoryPage.jsx'
 import { UtilizationsCreatePage } from './pages/utilizations/UtilizationsCreatePage.jsx'
 import { UtilizationsHistoryPage } from './pages/utilizations/UtilizationsHistoryPage.jsx'
@@ -60,7 +61,13 @@ function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const meta = ROUTE_META[location.pathname] ?? { title: 'Cheflive', crumbs: ['Cheflive'] }
+  const meta =
+    ROUTE_META[location.pathname] ??
+    (/^\/transfers\/\d+\/edit$/.test(location.pathname)
+      ? { title: 'Transfers • Edit', crumbs: ['Transfers', 'Edit'] }
+      : /^\/purchases\/\d+\/edit$/.test(location.pathname)
+        ? { title: 'Purchases • Edit', crumbs: ['Purchases', 'Edit'] }
+        : { title: 'Cheflive', crumbs: ['Cheflive'] })
   const { username, logout } = useAuth()
   const isAuthRoute =
     location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/reset-password'
@@ -186,6 +193,14 @@ function AppShell() {
               element={
                 <RequireAuth>
                   <TransfersHistoryPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/transfers/:id/edit"
+              element={
+                <RequireAuth>
+                  <TransfersEditPage />
                 </RequireAuth>
               }
             />

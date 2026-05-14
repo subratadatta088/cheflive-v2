@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { z } from 'zod'
 import { RotateCcw, Save } from 'lucide-react'
@@ -8,10 +9,11 @@ import { LineItemsGrid } from '../../components/LineItemsGrid.jsx'
 import { AddOriginButton } from '../../components/AddOriginButton.jsx'
 import {
   getIngredientRunningStockDefault,
+  getIngredientsBulkByIds,
   listIngredients,
   listIngredientUnitConversions,
 } from '../../apis/ingredient.js'
-import { createPurchase } from '../../apis/purchase.js'
+import { createPurchase, getPurchaseById, updatePurchaseById } from '../../apis/purchase.js'
 import { MultiSelect } from '../../components/MultiSelect.jsx'
 import { useToast } from '../../components/Toaster.jsx'
 import { usePurchaseCreateShortcuts } from '../../shortcuts/usePurchaseCreateShortcuts.js'
@@ -147,7 +149,207 @@ function buildFreshPurchaseValues(origins, defaultOrigin) {
   }
 }
 
-function PurchasesCreateInnerPage() {
+/**
+ * Load purchase + ingredient metadata for the edit form (same row shape as create).
+ * @param {number} editId
+ */
+async function loadEditBootstrap(editId) {
+  const purRes = await getPurchaseById(editId)
+  const p = purRes?.purchase ?? purRes
+  if (!p?.id) throw new Error('Purchase not found.')
+
+  const items = Array.isArray(p.items) ? p.items : []
+  const ingIds = [
+    ...new Set(
+      items.map((it) => Number(it.ingredient_id)).filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  ]
+
+  const bulkRaw = ingIds.length ? await getIngredientsBulkByIds(ingIds) : {}
+  const bulkItems = Array.isArray(bulkRaw?.items) ? bulkRaw.items : []
+
+  /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */
+  const ingredientsById = {}
+  /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */
+  const ingredientsByItemCode = {}
+  for (const it of bulkItems) {
+    const id = Number(it?.id)
+    if (!Number.isFinite(id) || id <= 0) continue
+    const ing = {
+      id,
+      item_code: it?.item_code ?? null,
+      name: it?.name ?? '',
+      unit: it?.unit ?? '',
+      base_price: it?.base_price ?? null,
+    }
+    ingredientsById[String(id)] = ing
+    const code = ing.item_code === null || ing.item_code === undefined ? '' : String(ing.item_code)
+    if (code) ingredientsByItemCode[code] = ing
+  }
+
+  /** @type {Map<number, { convItems: unknown[], unitOptions: { value: string, label: string }[] | null, baseUnit: string, defaultParts: ReturnType<typeof parseDefaultStockParts> }>} */
+  const perIngMeta = new Map()
+  await Promise.all(
+    ingIds.map(async (ingredientId) => {
+      const ingKey = String(ingredientId)
+      let convItems = []
+      try {
+        const convData = await listIngredientUnitConversions(ingKey)
+        convItems = Array.isArray(convData?.items) ? convData.items : []
+      } catch {
+        // ignore
+      }
+      let defaultParts = null
+      try {
+        const stockData = await getIngredientRunningStockDefault(ingKey)
+        defaultParts = parseDefaultStockParts(stockData?.qty, stockData?.unit)
+      } catch {
+        // ignore
+      }
+
+      const ing = ingredientsById[ingKey]
+      const baseUnit = ing?.unit ? String(ing.unit) : ''
+      const units = []
+      if (baseUnit) units.push(baseUnit)
+      for (const c of convItems) {
+        const from = c?.from_unit ? String(c.from_unit) : ''
+        const to = c?.to_unit ? String(c.to_unit) : ''
+        if (from) units.push(from)
+        if (to) units.push(to)
+      }
+      const uniq = [...new Set(units)]
+      const unitOptions = uniq.length ? uniq.map((u) => ({ value: u, label: u })) : null
+      perIngMeta.set(ingredientId, { convItems, unitOptions, baseUnit, defaultParts })
+    }),
+  )
+
+  function fmtQty(q) {
+    const raw = q === undefined || q === null ? NaN : Number(q)
+    if (!Number.isFinite(raw)) return String(q ?? '')
+    return raw % 1 === 0 ? String(raw) : String(raw)
+  }
+
+  const rows =
+    items.length === 0
+      ? [newRow()]
+      : items.map((it) => {
+          const ingredientId = Number(it.ingredient_id)
+          const ingKey = String(ingredientId)
+          const ing = ingredientsById[ingKey]
+          const meta = perIngMeta.get(ingredientId) || {
+            convItems: [],
+            unitOptions: null,
+            baseUnit: '',
+            defaultParts: null,
+          }
+          const storedUnit =
+            it.unit != null && String(it.unit).trim() !== '' ? String(it.unit).trim() : meta.baseUnit
+          const row = newRow()
+          const up =
+            it.unit_price != null && it.unit_price !== '' && it.unit_price !== undefined
+              ? String(it.unit_price)
+              : ''
+          return {
+            ...row,
+            ingredient_id: Number.isFinite(ingredientId) && ingredientId > 0 ? ingKey : '',
+            item_code: ing?.item_code != null && ing?.item_code !== undefined ? String(ing.item_code) : '',
+            ingredient_label:
+              buildIngredientLabel(ing) || (it.ingredient_name ? String(it.ingredient_name) : ingKey),
+            qty: fmtQty(it.qty),
+            unit: storedUnit,
+            unitOptions: meta.unitOptions,
+            unitConversions: meta.convItems,
+            unitPrice: up,
+            baseUnit: meta.baseUnit,
+            basePrice: ing?.base_price === null || ing?.base_price === undefined ? '' : String(ing.base_price),
+            defaultStockQtyStr: meta.defaultParts ? meta.defaultParts.qtyStr : '',
+            defaultStockUnit: meta.defaultParts ? meta.defaultParts.unitStr : '',
+            defaultStockLoading: false,
+          }
+        })
+
+  const d = p.date != null ? String(p.date).trim() : ''
+  const purchaseDate = d.length >= 10 ? d.slice(0, 10) : d || todayLocalDate()
+
+  const initialValues = {
+    purchaseDate,
+    originId: String(Number(p.origin_id) || ''),
+    transferTo: '',
+    notes: p.note != null && p.note !== undefined ? String(p.note) : '',
+    rows,
+  }
+
+  return {
+    initialValues,
+    resetSnapshot: structuredClone(initialValues),
+    ingredientsById,
+    ingredientsByItemCode,
+  }
+}
+
+export function PurchasesPurchaseForm({ editPurchaseId } = {}) {
+  const isEdit = Number.isFinite(Number(editPurchaseId)) && Number(editPurchaseId) > 0
+  const editId = isEdit ? Number(editPurchaseId) : 0
+  const [editBoot, setEditBoot] = useState(null)
+  const [editLoadError, setEditLoadError] = useState('')
+
+  useEffect(() => {
+    if (!isEdit) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      setEditLoadError('')
+      setEditBoot(null)
+      void (async () => {
+        try {
+          const boot = await loadEditBootstrap(editId)
+          if (!cancelled) setEditBoot(boot)
+        } catch (e) {
+          if (!cancelled) {
+            setEditLoadError(
+              e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to load purchase.',
+            )
+          }
+        }
+      })()
+    }, 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [isEdit, editId])
+
+  if (isEdit && editLoadError) {
+    return (
+      <section className="space-y-4">
+        <div className="mt-4" />
+        <Breadcrumb items={[{ label: 'Purchases', href: '/purchases/history' }, { label: 'Edit' }]} />
+        <p className="text-sm text-red-700">{editLoadError}</p>
+      </section>
+    )
+  }
+
+  if (isEdit && !editBoot) {
+    return (
+      <section className="space-y-4">
+        <div className="mt-4" />
+        <Breadcrumb items={[{ label: 'Purchases', href: '/purchases/history' }, { label: 'Edit' }]} />
+        <p className="mt-2 text-sm text-slate-600">Loading…</p>
+      </section>
+    )
+  }
+
+  return (
+    <PurchasesPurchaseFormInner
+      key={isEdit ? `edit-${editId}` : 'create'}
+      mode={isEdit ? 'edit' : 'create'}
+      editId={editId}
+      editBoot={isEdit ? editBoot : undefined}
+    />
+  )
+}
+
+function PurchasesPurchaseFormInner({ mode, editId, editBoot }) {
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const { origins: originOptions, defaultOrigin, addOrigin } = useOrigins()
   /** Full Formik snapshot (async origins effect). */
@@ -160,13 +362,16 @@ function PurchasesCreateInnerPage() {
   const isSubmittingRef = useRef(false)
 
   const formik = useFormik({
-    initialValues: {
-      purchaseDate: todayLocalDate(),
-      originId: '',
-      transferTo: '',
-      notes: '',
-      rows: [newRow()],
-    },
+    initialValues:
+      mode === 'edit' && editBoot?.initialValues
+        ? editBoot.initialValues
+        : {
+            purchaseDate: todayLocalDate(),
+            originId: '',
+            transferTo: '',
+            notes: '',
+            rows: [newRow()],
+          },
     validateOnChange: false,
     validateOnBlur: false,
     validateOnMount: false,
@@ -179,6 +384,28 @@ function PurchasesCreateInnerPage() {
       if (!confirm('Are you sure you want to save this purchase?')) return
       helpers.setStatus(undefined)
       const originIdNum = Number(values.originId)
+
+      if (mode === 'edit') {
+        helpers.setSubmitting(true)
+        try {
+          const note = String(values.notes ?? '').trim()
+          await updatePurchaseById(editId, {
+            origin_id: originIdNum,
+            date: values.purchaseDate,
+            note: note === '' ? null : note,
+          })
+          showToast({ text: 'Purchase updated.', theme: 'success', duration: 4000 })
+          navigate('/purchases/history')
+        } catch (e) {
+          const apiMsg = e?.response?.data?.error || e?.message || 'Failed to save purchase.'
+          console.error('[Purchase update failed]', e)
+          helpers.setStatus(String(apiMsg))
+        } finally {
+          helpers.setSubmitting(false)
+        }
+        return
+      }
+
       const items = []
       for (const r of values.rows) {
         const ingId = Number(r?.ingredient_id)
@@ -243,9 +470,13 @@ function PurchasesCreateInnerPage() {
   }
 
   const handleResetPurchaseForm = useCallback(() => {
-    formik.resetForm({ values: buildFreshPurchaseValues(originOptions, defaultOrigin) })
+    if (mode === 'edit' && editBoot?.resetSnapshot) {
+      formik.resetForm({ values: structuredClone(editBoot.resetSnapshot) })
+    } else {
+      formik.resetForm({ values: buildFreshPurchaseValues(originOptions, defaultOrigin) })
+    }
     formik.setStatus(undefined)
-  }, [originOptions, defaultOrigin, formik.resetForm, formik.setStatus])
+  }, [mode, editBoot, originOptions, defaultOrigin, formik.resetForm, formik.setStatus])
 
   usePurchaseCreateShortcuts({
     rowsRef,
@@ -257,10 +488,16 @@ function PurchasesCreateInnerPage() {
 
   const [ingredientOptions, setIngredientOptions] = useState(() => /** @type {{ value: string, label: string }[]} */ ([]))
   const [ingredientsById, setIngredientsById] = useState(
-    () => /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */ ({}),
+    () =>
+      /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */ (
+        mode === 'edit' && editBoot?.ingredientsById ? { ...editBoot.ingredientsById } : {}
+      ),
   )
   const [ingredientsByItemCode, setIngredientsByItemCode] = useState(
-    () => /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */ ({}),
+    () =>
+      /** @type {Record<string, { id: number, item_code?: number|null, name?: string, unit?: string, base_price?: number|null }>} */ (
+        mode === 'edit' && editBoot?.ingredientsByItemCode ? { ...editBoot.ingredientsByItemCode } : {}
+      ),
   )
   const [ingredientSearch, setIngredientSearch] = useState('')
 
@@ -706,10 +943,19 @@ function PurchasesCreateInnerPage() {
 
   return (
     <section className="space-y-4">
-      <Breadcrumb items={[{ label: 'Purchases' }, { label: 'Create' }]} />
+      <div className='mt-4' ></div>
+      <Breadcrumb
+        items={
+          mode === 'edit'
+            ? [{ label: 'Purchases', href: '/purchases/history' }, { label: 'Edit' }]
+            : [{ label: 'Purchases' }, { label: 'Create' }]
+        }
+      />
 
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">Create purchase</h2>
+        <h2 className="text-base font-semibold text-slate-900">
+          {mode === 'edit' ? `Edit purchase #${editId}` : 'Create purchase'}
+        </h2>
         <AddOriginButton onCreated={handleOriginCreated} />
       </div>
 
@@ -879,7 +1125,7 @@ function PurchasesCreateInnerPage() {
 export function PurchasesCreatePage() {
   return (
     <OriginsProvider>
-      <PurchasesCreateInnerPage />
+      <PurchasesPurchaseForm />
     </OriginsProvider>
   )
 }

@@ -91,6 +91,17 @@ export async function getIngredientRunningStockDefault(id) {
 }
 
 /**
+ * GET /ingredients/:id/running-stock/:origin_id
+ * Running stock for an ingredient at a specific origin.
+ * @param {number|string} id
+ * @param {number|string} originId
+ */
+export async function getIngredientRunningStockByOrigin(id, originId) {
+  const res = await api.get(`ingredients/${id}/running-stock/${encodeURIComponent(String(originId))}`)
+  return res.data
+}
+
+/**
  * PUT /ingredients/:id/unit-conversions (upsert)
  * @param {number|string} id
  * @param {{ items: Array<{ id?: number, from_unit?: string, to_unit?: string, factor?: number }> }|Array<any>} payload

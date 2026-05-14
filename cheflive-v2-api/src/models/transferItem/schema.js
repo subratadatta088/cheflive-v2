@@ -42,6 +42,11 @@ const TransferItemRowSchema = z.object({
   deleted_at: z.string().optional().nullable(),
 })
 
+/** Row when `transfer_items` is joined with `ingredients` (list/getById, nested on transfers). */
+const TransferItemApiRowSchema = TransferItemRowSchema.extend({
+  ingredient_name: z.string().nullable().optional(),
+})
+
 const TransferItemListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
@@ -57,6 +62,7 @@ module.exports = {
   TransferItemCreateInternalSchema,
   TransferItemUpdateSchema,
   TransferItemRowSchema,
+  TransferItemApiRowSchema,
   TransferItemListQuerySchema,
 }
 

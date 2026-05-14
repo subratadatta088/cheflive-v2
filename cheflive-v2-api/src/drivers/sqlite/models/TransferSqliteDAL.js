@@ -5,7 +5,7 @@ const {
   TransferRowSchema,
   TransferUpdateSchema,
 } = require('../../../models/transfer/schema')
-const { TransferItemRowSchema } = require('../../../models/transferItem/schema')
+const { TransferItemApiRowSchema } = require('../../../models/transferItem/schema')
 const { openSqlite } = require('../db')
 const { applyTransferItemMovement } = require('../stock/applyStockMovement')
 
@@ -67,8 +67,31 @@ function normalizeTransferRow(row) {
   return { ...parsed, transfer_date }
 }
 
-function normalizeItemRow(row) {
-  return TransferItemRowSchema.parse(row)
+function normalizeTransferItemApiRow(row) {
+  return TransferItemApiRowSchema.parse(row)
+}
+
+/** transfer_items ⨝ ingredients for one or many transfers (aligned with purchase_items). */
+async function fetchTransferItemsJoined(db, organization_id, transferIds) {
+  const ids = Array.isArray(transferIds)
+    ? [...new Set(transferIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+    : []
+  if (!ids.length) return []
+  const placeholders = ids.map(() => '?').join(', ')
+  return await all(
+    db,
+    `SELECT ti.*, i.name AS ingredient_name
+     FROM transfer_items ti
+     LEFT JOIN ingredients i
+       ON i.id = ti.ingredient_id
+      AND i.organization_id = ti.organization_id
+      AND (i.deleted_at IS NULL OR i.deleted_at = '')
+     WHERE ti.organization_id = ?
+       AND ti.transfer_id IN (${placeholders})
+       AND (ti.deleted_at IS NULL OR ti.deleted_at = '')
+     ORDER BY ti.transfer_id ASC, ti.id ASC`,
+    [organization_id, ...ids]
+  )
 }
 
 class TransferSqliteDAL extends TransferModel {
@@ -212,16 +235,9 @@ class TransferSqliteDAL extends TransferModel {
     if (!row) return null
     const transfer = normalizeTransferRow(row)
 
-    const itemRows = await all(
-      this.db,
-      `SELECT * FROM transfer_items
-       WHERE organization_id = ?
-         AND transfer_id = ?
-         AND (deleted_at IS NULL OR deleted_at = '')`,
-      [transfer.organization_id, transfer.id]
-    )
+    const itemRows = await fetchTransferItemsJoined(this.db, transfer.organization_id, [transfer.id])
 
-    return { ...transfer, items: itemRows.map(normalizeItemRow) }
+    return { ...transfer, items: itemRows.map(normalizeTransferItemApiRow) }
   }
 
   async list({ organization_id, page, limit, q, from_origin_id, to_origin_id }) {
@@ -256,18 +272,10 @@ class TransferSqliteDAL extends TransferModel {
     if (!transfers.length) return transfers.map((t) => ({ ...t, items: [] }))
 
     const transferIds = transfers.map((t) => t.id)
-    const placeholders = transferIds.map(() => '?').join(', ')
 
-    const itemRows = await all(
-      this.db,
-      `SELECT * FROM transfer_items
-       WHERE organization_id = ?
-         AND transfer_id IN (${placeholders})
-         AND (deleted_at IS NULL OR deleted_at = '')`,
-      [organization_id, ...transferIds]
-    )
+    const itemRows = await fetchTransferItemsJoined(this.db, organization_id, transferIds)
 
-    const items = itemRows.map(normalizeItemRow)
+    const items = itemRows.map(normalizeTransferItemApiRow)
     const byTransfer = new Map()
     for (const it of items) {
       const tid = it.transfer_id

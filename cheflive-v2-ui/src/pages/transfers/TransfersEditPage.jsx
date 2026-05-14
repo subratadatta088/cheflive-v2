@@ -1,28 +1,28 @@
 import { useParams } from 'react-router-dom'
 import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { OriginsProvider } from '../../context/OriginsContext.jsx'
-import { PurchasesPurchaseForm } from './PurchasesCreatePage.jsx'
+import { TransfersTransferForm } from './TransfersCreatePage.jsx'
 
-function PurchasesEditInnerPage() {
+function TransfersEditInnerPage() {
   const { id: idParam } = useParams()
   const id = Number(idParam)
 
   if (!Number.isFinite(id) || id <= 0) {
     return (
       <section className="space-y-4">
-        <Breadcrumb items={[{ label: 'Purchases', href: '/purchases/history' }, { label: 'Edit' }]} />
-        <p className="text-sm text-red-700">Invalid purchase id.</p>
+        <Breadcrumb items={[{ label: 'Transfers', href: '/transfers/history' }, { label: 'Edit' }]} />
+        <p className="text-sm text-red-700">Invalid transfer id.</p>
       </section>
     )
   }
 
-  return <PurchasesPurchaseForm editPurchaseId={id} />
+  return <TransfersTransferForm editTransferId={id} />
 }
 
-export function PurchasesEditPage() {
+export function TransfersEditPage() {
   return (
     <OriginsProvider>
-      <PurchasesEditInnerPage />
+      <TransfersEditInnerPage />
     </OriginsProvider>
   )
 }
