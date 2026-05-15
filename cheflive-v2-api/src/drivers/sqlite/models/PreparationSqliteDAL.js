@@ -117,6 +117,7 @@ class PreparationSqliteDAL extends PreparationModel {
           `SELECT COUNT(*) AS c
            FROM ingredients
            WHERE organization_id = ?
+             AND (deleted_at IS NULL OR deleted_at = '')
              AND id IN (${placeholders})`,
           [payload.organization_id, ...ingredientIds]
         )
@@ -171,7 +172,11 @@ class PreparationSqliteDAL extends PreparationModel {
 
   async getById(id) {
     const prepId = PreparationIdSchema.parse(id)
-    const row = await get(this.db, `SELECT * FROM preparations WHERE id = ?`, [prepId])
+    const row = await get(
+      this.db,
+      `SELECT * FROM preparations WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+      [prepId]
+    )
     if (!row) return null
     const preparation = normalizePreparationRow(row)
 
@@ -199,8 +204,21 @@ class PreparationSqliteDAL extends PreparationModel {
     return rows.map(normalizePreparationRow)
   }
 
-  async list({ organization_id, page, limit, q, type, is_active }) {
-    const where = ['organization_id = ?']
+  async list({
+    organization_id,
+    page,
+    limit,
+    q,
+    type,
+    is_active,
+    from_date,
+    to_date,
+    has_ingredients,
+  }) {
+    const where = [
+      'organization_id = ?',
+      "(deleted_at IS NULL OR deleted_at = '')",
+    ]
     const params = [organization_id]
 
     if (q) {
@@ -218,6 +236,40 @@ class PreparationSqliteDAL extends PreparationModel {
         is_active === true || is_active === '1' || is_active === 1 ? 1 : 0
       where.push('is_active = ?')
       params.push(v)
+    }
+
+    if (from_date) {
+      where.push('date(created_at) >= date(?)')
+      params.push(String(from_date).slice(0, 10))
+    }
+
+    if (to_date) {
+      where.push('date(created_at) <= date(?)')
+      params.push(String(to_date).slice(0, 10))
+    }
+
+    if (has_ingredients === true || has_ingredients === '1' || has_ingredients === 1) {
+      where.push(
+        `EXISTS (
+           SELECT 1 FROM preparation_items pi
+           WHERE pi.preparation_id = preparations.id
+             AND pi.organization_id = preparations.organization_id
+             AND (pi.deleted_at IS NULL OR pi.deleted_at = '')
+         )`
+      )
+    } else if (
+      has_ingredients === false ||
+      has_ingredients === '0' ||
+      has_ingredients === 0
+    ) {
+      where.push(
+        `NOT EXISTS (
+           SELECT 1 FROM preparation_items pi
+           WHERE pi.preparation_id = preparations.id
+             AND pi.organization_id = preparations.organization_id
+             AND (pi.deleted_at IS NULL OR pi.deleted_at = '')
+         )`
+      )
     }
 
     const offset = (page - 1) * limit
@@ -239,15 +291,19 @@ class PreparationSqliteDAL extends PreparationModel {
 
     const itemRows = await all(
       this.db,
-      `SELECT *
-       FROM preparation_items
-       WHERE organization_id = ?
-         AND preparation_id IN (${placeholders})
-         AND (deleted_at IS NULL OR deleted_at = '')`,
+      `SELECT pi.*, i.name AS ingredient_name, i.item_code AS ingredient_item_code
+       FROM preparation_items pi
+       LEFT JOIN ingredients i
+         ON i.id = pi.ingredient_id
+        AND i.organization_id = pi.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE pi.organization_id = ?
+         AND pi.preparation_id IN (${placeholders})
+         AND (pi.deleted_at IS NULL OR pi.deleted_at = '')`,
       [organization_id, ...prepIds]
     )
 
-    const items = itemRows.map((r) => PreparationItemRowSchema.parse(r))
+    const items = itemRows.map((r) => PreparationItemApiRowSchema.parse(r))
     const byPrep = new Map()
     for (const it of items) {
       const pid = it.preparation_id
@@ -264,48 +320,100 @@ class PreparationSqliteDAL extends PreparationModel {
     const prepId = PreparationIdSchema.parse(id)
     const payload = PreparationUpdateSchema.parse(data)
 
-    const fields = []
-    const params = []
+    return await withTransaction(this.db, async () => {
+      const existing = await get(
+        this.db,
+        `SELECT * FROM preparations WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+        [prepId]
+      )
+      if (!existing) return null
 
-    if (payload.organization_id !== undefined) {
-      fields.push('organization_id = ?')
-      params.push(payload.organization_id)
-    }
-    if (payload.name !== undefined) {
-      fields.push('name = ?')
-      params.push(payload.name)
-    }
-    if (payload.type !== undefined) {
-      fields.push('type = ?')
-      params.push(payload.type)
-    }
-    if (payload.qty !== undefined) {
-      fields.push('qty = ?')
-      params.push(payload.qty)
-    }
-    if (payload.unit !== undefined) {
-      fields.push('unit = ?')
-      params.push(payload.unit)
-    }
-    if (payload.tags !== undefined) {
-      fields.push('tags = ?')
-      params.push(payload.tags === null ? null : JSON.stringify(payload.tags))
-    }
-    if (payload.is_active !== undefined) {
-      fields.push('is_active = ?')
-      params.push(payload.is_active ? 1 : 0)
-    }
+      const orgId = Number(existing.organization_id)
+      const fields = []
+      const params = []
 
-    fields.push('updated_at = ?')
-    params.push(new Date().toISOString())
+      if (payload.organization_id !== undefined) {
+        fields.push('organization_id = ?')
+        params.push(payload.organization_id)
+      }
+      if (payload.name !== undefined) {
+        fields.push('name = ?')
+        params.push(payload.name)
+      }
+      if (payload.type !== undefined) {
+        fields.push('type = ?')
+        params.push(payload.type)
+      }
+      if (payload.qty !== undefined) {
+        fields.push('qty = ?')
+        params.push(payload.qty)
+      }
+      if (payload.unit !== undefined) {
+        fields.push('unit = ?')
+        params.push(payload.unit)
+      }
+      if (payload.tags !== undefined) {
+        fields.push('tags = ?')
+        params.push(payload.tags === null ? null : JSON.stringify(payload.tags))
+      }
+      if (payload.is_active !== undefined) {
+        fields.push('is_active = ?')
+        params.push(payload.is_active ? 1 : 0)
+      }
 
-    await run(
-      this.db,
-      `UPDATE preparations SET ${fields.join(', ')} WHERE id = ?`,
-      [...params, prepId]
-    )
+      const now = new Date().toISOString()
+      fields.push('updated_at = ?')
+      params.push(now)
 
-    return await this.getById(prepId)
+      if (fields.length > 1) {
+        await run(
+          this.db,
+          `UPDATE preparations SET ${fields.join(', ')} WHERE id = ?`,
+          [...params, prepId]
+        )
+      }
+
+      if (payload.items !== undefined) {
+        const items = Array.isArray(payload.items) ? payload.items : []
+        if (items.length) {
+          const ingredientIds = Array.from(new Set(items.map((i) => i.ingredient_id)))
+          const placeholders = ingredientIds.map(() => '?').join(', ')
+          const checkRow = await get(
+            this.db,
+            `SELECT COUNT(*) AS c
+             FROM ingredients
+             WHERE organization_id = ?
+               AND (deleted_at IS NULL OR deleted_at = '')
+               AND id IN (${placeholders})`,
+            [orgId, ...ingredientIds]
+          )
+          const count = Number(checkRow?.c || 0)
+          if (count !== ingredientIds.length) {
+            throw new Error('Ingredient organization mismatch')
+          }
+        }
+
+        await run(
+          this.db,
+          `UPDATE preparation_items
+           SET deleted_at = ?, updated_at = ?
+           WHERE preparation_id = ? AND organization_id = ?
+             AND (deleted_at IS NULL OR deleted_at = '')`,
+          [now, now, prepId, orgId]
+        )
+
+        for (const it of items) {
+          await run(
+            this.db,
+            `INSERT INTO preparation_items (organization_id, preparation_id, ingredient_id, qty, unit, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [orgId, prepId, it.ingredient_id, it.qty ?? null, it.unit ?? null, now, now]
+          )
+        }
+      }
+
+      return await this.getById(prepId)
+    })
   }
 
   async deleteById(id) {

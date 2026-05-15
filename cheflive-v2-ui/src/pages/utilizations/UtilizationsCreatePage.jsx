@@ -5,6 +5,7 @@ import { Plus, RotateCcw, Save } from 'lucide-react'
 import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { Button } from '../../components/Button.jsx'
 import { AddOriginButton } from '../../components/AddOriginButton.jsx'
+import { CreatePreparationButton } from '../../components/CreatePreparationButton.jsx'
 import {
   getIngredientsBulkByIds,
   listIngredients,
@@ -270,6 +271,7 @@ function usePreparationLookup(editBoot) {
     preparationOptions,
     preparationLoading,
     setPreparationSearch,
+    setPreparationOptions,
   }
 }
 
@@ -524,6 +526,7 @@ function UtilizationsCreateInnerPage() {
     preparationOptions,
     preparationLoading,
     setPreparationSearch,
+    setPreparationOptions,
   } = usePreparationLookup(null)
 
   const recordsRef = useRef(records)
@@ -613,13 +616,31 @@ function UtilizationsCreateInnerPage() {
     addOrigin(created)
   }
 
+  const handlePreparationCreated = useCallback(
+    (created) => {
+      const id = created?.id != null ? Number(created.id) : NaN
+      if (!Number.isFinite(id) || id <= 0) return
+      const name = created?.name != null ? String(created.name).trim() : ''
+      const option = { value: String(id), label: name || `Preparation #${id}` }
+      setPreparationOptions((prev) => {
+        const map = new Map(prev.map((o) => [String(o.value), o]))
+        map.set(option.value, option)
+        return [...map.values()]
+      })
+    },
+    [setPreparationOptions],
+  )
+
   return (
     <section className="space-y-4">
       <div className="mt-4" />
       <Breadcrumb items={[{ label: 'Utilizations' }, { label: 'Create' }]} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-slate-900">Create utilizations</h2>
-        <AddOriginButton onCreated={handleOriginCreated} />
+        <div className="flex flex-wrap items-center gap-2">
+          <CreatePreparationButton onCreated={handlePreparationCreated} />
+          <AddOriginButton onCreated={handleOriginCreated} />
+        </div>
       </div>
      
       <div>

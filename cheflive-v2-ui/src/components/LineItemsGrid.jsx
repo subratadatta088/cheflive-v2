@@ -9,7 +9,7 @@ function CellInput({ value, onChange, readOnly = false, className = '', ...rest 
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={
-        'box-border h-9 w-full min-w-[72px] border-0 bg-transparent px-2 py-1 text-sm tabular-nums text-slate-900 outline-none placeholder:text-slate-400 ' +
+        'box-border min-h-9 w-full min-w-[72px] border-0 bg-transparent px-2 py-1 text-sm tabular-nums text-slate-900 outline-none placeholder:text-slate-400 ' +
         'focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300 ' +
         (readOnly ? 'cursor-default bg-slate-50/80 text-slate-600 ' : '') +
         className
@@ -133,7 +133,7 @@ export function LineItemsGrid({
         <select
           value={strVal}
           onChange={(e) => updateCell(index, key, e.target.value)}
-          className="box-border h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-900 outline-none focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
+          className="box-border min-h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-900 outline-none focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
         >
           {col.options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -185,7 +185,7 @@ export function LineItemsGrid({
   const edgelessRow = '[&>:first-child]:border-l-0 [&>:last-child]:border-r-0'
 
   return (
-    <div className={`overflow-x-auto bg-white ${className}`}>
+    <div className={`w-full overflow-visible bg-white ${className}`}>
       <table className={`w-full min-w-[760px] border-collapse border-0 text-left text-sm ${tableClassName}`}>
         <thead>
           <tr className={`bg-white [&>*]:border-x-0 [&>*]:border-t-0 ${edgelessRow}`}>
@@ -203,7 +203,7 @@ export function LineItemsGrid({
               </th>
             ))}
             {showRowActions ? (
-              <th className="w-[88px] border border-slate-200 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <th className="min-w-[5.5rem] border border-slate-200 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
                 {rowActionsHeader}
               </th>
             ) : null}
@@ -221,13 +221,13 @@ export function LineItemsGrid({
                 </td>
               ) : null}
               {columns.map((col) => (
-                <td key={String(col.key)} className={`border border-slate-200 p-0 align-middle ${col.tdClassName ?? ''}`}>
+                <td key={String(col.key)} className={`overflow-visible border border-slate-200 p-0 align-middle ${col.tdClassName ?? ''}`}>
                   {renderCell(col, row, index)}
                 </td>
               ))}
               {showRowActions ? (
-                <td className="border border-slate-200 p-0 align-middle">
-                  <div className="flex h-9 items-center justify-center gap-1 px-1">
+                <td className="overflow-visible border border-slate-200 p-0 align-top">
+                  <div className="flex min-h-9 flex-wrap items-center justify-center gap-1 px-1 py-1">
                     <button
                       type="button"
                       title="Remove row"

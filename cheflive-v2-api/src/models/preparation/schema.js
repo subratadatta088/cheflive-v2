@@ -16,6 +16,15 @@ const PreparationCreateSchema = z.object({
   items: z.array(PreparationItemNestedCreateSchema).optional(),
 })
 
+const PreparationFieldsSchema = z.object({
+  name: z.string().min(1),
+  type: z.string().min(1).optional(),
+  qty: z.number().finite().optional(),
+  unit: z.string().min(1).optional(),
+  tags: z.array(z.string()).optional(),
+  is_active: z.boolean().optional(),
+})
+
 const PreparationUpdateSchema = z.object({
   organization_id: OrganizationIdSchema.optional(),
   name: z.string().min(1).optional(),
@@ -24,6 +33,13 @@ const PreparationUpdateSchema = z.object({
   unit: z.string().min(1).nullable().optional(),
   tags: z.array(z.string()).nullable().optional(),
   is_active: z.boolean().optional(),
+  items: z.array(PreparationItemNestedCreateSchema).optional(),
+})
+
+/** POST/PATCH body: { preparation: {...}, items: [...] } */
+const PreparationWriteBodySchema = z.object({
+  preparation: PreparationFieldsSchema.partial().optional(),
+  items: z.array(PreparationItemNestedCreateSchema).optional(),
 })
 
 const PreparationRowSchema = z.object({
@@ -46,13 +62,18 @@ const PreparationListQuerySchema = z.object({
   q: z.string().min(1).optional(),
   type: z.string().min(1).optional(),
   is_active: BooleanFlagSchema.optional(),
+  from_date: z.string().min(1).optional(),
+  to_date: z.string().min(1).optional(),
+  has_ingredients: BooleanFlagSchema.optional(),
   organization_id: z.coerce.number().int().positive().optional(),
 })
 
 module.exports = {
   PreparationIdSchema,
+  PreparationFieldsSchema,
   PreparationCreateSchema,
   PreparationUpdateSchema,
+  PreparationWriteBodySchema,
   PreparationRowSchema,
   PreparationListQuerySchema,
 }
