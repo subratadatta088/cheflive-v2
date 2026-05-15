@@ -61,6 +61,24 @@ const TransferListQuerySchema = z.object({
     .default(false),
 })
 
+/**
+ * Body for POST /transfers/grouped-items and POST /transfers/all-items.
+ */
+const TransferGroupItemsBodySchema = z.object({
+  organization_id: z.coerce.number().int().positive().optional(),
+  ids: z
+    .preprocess((v) => {
+      if (v === undefined || v === null || v === '') return []
+      const parts = Array.isArray(v) ? v : [v]
+      const flat = parts
+        .flatMap((x) => String(x ?? '').split(','))
+        .map((s) => s.trim())
+        .filter(Boolean)
+      return flat
+    }, z.array(z.coerce.number().int().positive()).max(100))
+    .default([]),
+})
+
 module.exports = {
   TransferIdSchema,
   TransferCreateSchema,
@@ -68,5 +86,6 @@ module.exports = {
   TransferUpdateSchema,
   TransferRowSchema,
   TransferListQuerySchema,
+  TransferGroupItemsBodySchema,
 }
 

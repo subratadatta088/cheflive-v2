@@ -58,3 +58,42 @@ export async function deleteUtilizationById(id) {
   const res = await api.delete(`utilizations/${id}`)
   return res.data
 }
+
+function normalizeUtilizationAggregateResponse(data, ids) {
+  return {
+    utilization_ids: Array.isArray(data?.utilization_ids)
+      ? data.utilization_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : ids,
+    found_utilization_ids: Array.isArray(data?.found_utilization_ids)
+      ? data.found_utilization_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : [],
+    missing_ids: Array.isArray(data?.missing_ids)
+      ? data.missing_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : [],
+    items: Array.isArray(data?.items) ? data.items : [],
+    subtotal: Number.isFinite(Number(data?.subtotal)) ? Number(data.subtotal) : 0,
+  }
+}
+
+function utilizationAggregateBody(payload) {
+  const idsRaw = Array.isArray(payload?.ids) ? payload.ids : []
+  const ids = [...new Set(idsRaw.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
+  const body = { ids }
+  const orgId = payload?.organization_id != null ? Number(payload.organization_id) : NaN
+  if (Number.isFinite(orgId) && orgId > 0) body.organization_id = orgId
+  return { ids, body }
+}
+
+/** POST /utilizations/grouped-items */
+export async function getGroupedUtilizationItems(payload) {
+  const { ids, body } = utilizationAggregateBody(payload)
+  const res = await api.post('utilizations/grouped-items', body)
+  return normalizeUtilizationAggregateResponse(res.data ?? {}, ids)
+}
+
+/** POST /utilizations/all-items */
+export async function getAllUtilizationItems(payload) {
+  const { ids, body } = utilizationAggregateBody(payload)
+  const res = await api.post('utilizations/all-items', body)
+  return normalizeUtilizationAggregateResponse(res.data ?? {}, ids)
+}

@@ -27,6 +27,14 @@ class UtilizationService {
     return await this.models.utilization.list(query)
   }
 
+  async groupItemsByIngredient(params) {
+    return await this.models.utilization.groupItemsByIngredient(params)
+  }
+
+  async getAllItems(params) {
+    return await this.models.utilization.getAllItems(params)
+  }
+
   async getById(id) {
     return await this.models.utilization.getById(id)
   }

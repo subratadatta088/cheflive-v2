@@ -42,6 +42,8 @@ const UtilizationItemRowSchema = z.object({
 
 const UtilizationItemApiRowSchema = UtilizationItemRowSchema.extend({
   ingredient_name: z.string().nullable().optional(),
+  ingredient_default_unit: z.string().nullable().optional(),
+  item_code: z.number().int().nullable().optional(),
 })
 
 const UtilizationItemListQuerySchema = z.object({

@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Info, PanelRightOpen, PlusCircle, Trash2 } from 'lucide-react'
+import { Boxes, Info, List, PanelRightOpen, PlusCircle, Trash2 } from 'lucide-react'
 import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { Button } from '../../components/Button.jsx'
 import { ConfirmModal } from '../../components/ConfirmModal.jsx'
 import { DataTable } from '../../components/DataTable.jsx'
 import { DateTime } from '../../components/DateTime.jsx'
-import { deleteUtilizationById, listUtilizations } from '../../apis/utilization.js'
+import {
+  deleteUtilizationById,
+  getAllUtilizationItems,
+  getGroupedUtilizationItems,
+  listUtilizations,
+} from '../../apis/utilization.js'
 import { useToast } from '../../components/Toaster.jsx'
-import { SplitDetailPanel } from '../../components/SplitDetailPanel.jsx'
+import { ItemsPreviewSidePanel } from '../../components/itemsPreview/ItemsPreviewSidePanel.jsx'
+import { LineItemsPreviewTable } from '../../components/itemsPreview/LineItemsPreviewTable.jsx'
+import { useItemsPreviewPanel } from '../../hooks/useItemsPreviewPanel.js'
+import { normalizeSelectedIds } from '../../utils/selectionIds.js'
 import { OriginsProvider, useOrigins } from '../../context/OriginsContext.jsx'
 
 function formatUtilizationDate(value) {
@@ -32,26 +40,9 @@ function truncateNote(note, max = 56) {
   return `${t.slice(0, max)}…`
 }
 
-function formatQtyDisplay(n) {
-  if (!Number.isFinite(n)) return '—'
-  return n % 1 === 0 ? String(n) : n.toFixed(3).replace(/\.?0+$/, '')
-}
-
-function normalizeSelectedIds(selectedRowIds) {
-  const seen = new Set()
-  const out = []
-  for (const raw of selectedRowIds) {
-    const n = Number(raw)
-    if (!Number.isFinite(n) || n <= 0) continue
-    if (seen.has(n)) continue
-    seen.add(n)
-    out.push(n)
-  }
-  out.sort((a, b) => a - b)
-  return out
-}
-
+/** @param {Array<{ id?: unknown, name?: unknown }>} origins */
 function originNameById(origins) {
+  /** @type {Record<string, string>} */
   const map = {}
   for (const o of origins) {
     const id = Number(o?.id)
@@ -60,43 +51,6 @@ function originNameById(origins) {
     map[String(id)] = name || `Origin #${id}`
   }
   return map
-}
-
-function UtilizationItemsTable({ items }) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return <p className="text-sm text-slate-600">No line items.</p>
-  }
-  return (
-    <table className="w-full min-w-[420px] border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
-          <th className="pb-2 pe-3">Ingredient</th>
-          <th className="w-24 pb-2 pe-3 text-right">Qty</th>
-          <th className="w-24 pb-2">Unit</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((it) => (
-          <tr key={it.id ?? `${it.ingredient_id}-${it.qty}`} className="border-b border-slate-100">
-            <td className="py-2 pe-3 text-slate-900">
-              <div className="font-medium">
-                {it.ingredient_name != null && String(it.ingredient_name).trim() !== ''
-                  ? String(it.ingredient_name).trim()
-                  : 'Unknown ingredient'}
-              </div>
-              {it.ingredient_id != null ? (
-                <div className="text-xs tabular-nums text-slate-500">#{it.ingredient_id}</div>
-              ) : null}
-            </td>
-            <td className="py-2 pe-3 text-right tabular-nums">{formatQtyDisplay(Number(it.qty))}</td>
-            <td className="py-2 text-slate-700">
-              {it.unit != null && String(it.unit).trim() !== '' ? String(it.unit) : '—'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
 }
 
 function UtilizationsHistoryInnerPage() {
@@ -116,8 +70,13 @@ function UtilizationsHistoryInnerPage() {
 
   const [openMenuForId, setOpenMenuForId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [viewItemsUtilization, setViewItemsUtilization] = useState(null)
   const [selectedRowIds, setSelectedRowIds] = useState([])
+
+  const itemsPreview = useItemsPreviewPanel({
+    fetchGrouped: getGroupedUtilizationItems,
+    fetchFlat: getAllUtilizationItems,
+    onError: (text) => showToast({ theme: 'failure', duration: 6000, text }),
+  })
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   useEffect(() => {
@@ -238,7 +197,7 @@ function UtilizationsHistoryInnerPage() {
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 onClick={(e) => {
                   e.stopPropagation()
-                  setViewItemsUtilization(r)
+                  itemsPreview.openSingle(r)
                 }}
                 aria-label="Open line items"
               >
@@ -324,7 +283,36 @@ function UtilizationsHistoryInnerPage() {
     [navigate, openMenuForId, originNames],
   )
 
-  const panelOpen = Boolean(viewItemsUtilization)
+  const { singleRecord, aggregateView, aggregateLoading, mode, panelOpen, close } = itemsPreview
+
+  const panelTitle = (() => {
+    if (aggregateLoading || aggregateView) {
+      const prefix = mode === 'flat' ? 'All items' : 'Grouped items'
+      const ids = Array.isArray(aggregateView?.utilization_ids) ? aggregateView.utilization_ids : []
+      const found = Array.isArray(aggregateView?.found_utilization_ids) ? aggregateView.found_utilization_ids : []
+      return (
+        <>
+          {prefix}
+          {aggregateView ? (
+            <span className="ms-2 text-sm font-normal text-slate-500">
+              · {found.length}/{ids.length} {ids.length === 1 ? 'utilization' : 'utilizations'}
+            </span>
+          ) : null}
+        </>
+      )
+    }
+    if (singleRecord) return <>Utilization #{singleRecord.id} — line items</>
+    return null
+  })()
+
+  const aggregateSummaryFields = aggregateView
+    ? [
+        {
+          label: mode === 'flat' ? 'Line items' : 'Ingredients',
+          value: Array.isArray(aggregateView.items) ? aggregateView.items.length : 0,
+        },
+      ]
+    : []
 
   return (
     <section className="flex w-full flex-col gap-0 lg:flex-row lg:items-stretch">
@@ -338,6 +326,14 @@ function UtilizationsHistoryInnerPage() {
                   <Info className="h-4 w-4 shrink-0 text-red-900" strokeWidth={2.75} aria-hidden="true" />
                   <span className="tabular-nums">{selectedRowIds.length} selected</span>
                 </span>
+                <Button variant="secondary" type="button" onClick={() => itemsPreview.fetchGroupedView(selectedRowIds)}>
+                  <Boxes className="h-4 w-4" aria-hidden="true" />
+                  View grouped items
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => itemsPreview.fetchFlatView(selectedRowIds)}>
+                  <List className="h-4 w-4" aria-hidden="true" />
+                  View all items
+                </Button>
                 <Button variant="danger" type="button" onClick={() => setBulkDeleteOpen(true)}>
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                   Delete
@@ -473,41 +469,54 @@ function UtilizationsHistoryInnerPage() {
         />
       </div>
 
-      <SplitDetailPanel
+            <ItemsPreviewSidePanel
         open={panelOpen}
-        onClose={() => setViewItemsUtilization(null)}
-        title={viewItemsUtilization ? <>Utilization #{viewItemsUtilization.id} — line items</> : null}
+        onClose={close}
+        title={panelTitle}
+        loading={aggregateLoading}
+        loadingMessage={
+          mode === 'flat' ? 'Loading all items…' : mode === 'grouped' ? 'Loading grouped items…' : 'Loading items…'
+        }
+        summaryFields={
+          singleRecord
+            ? [
+                {
+                  label: 'Utilization date',
+                  value: formatUtilizationDate(singleRecord.date),
+                },
+                {
+                  label: 'Origin',
+                  value: (() => {
+                    const oid = Number(singleRecord.origin_id)
+                    if (!Number.isFinite(oid) || oid <= 0) return '—'
+                    return originNames[String(oid)] || 'Unknown origin'
+                  })(),
+                },
+                {
+                  label: 'Line items',
+                  value: Array.isArray(singleRecord.items) ? singleRecord.items.length : 0,
+                },
+              ]
+            : aggregateSummaryFields
+        }
+        missingIds={Array.isArray(aggregateView?.missing_ids) ? aggregateView.missing_ids : []}
+        entityLabel="utilization"
       >
-        {viewItemsUtilization ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-slate-200">
-                <div className="min-w-0 sm:pe-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Date</div>
-                  <div className="mt-0.5 font-medium text-slate-900">
-                    {formatUtilizationDate(viewItemsUtilization.date)}
-                  </div>
-                </div>
-                <div className="min-w-0 sm:ps-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Origin</div>
-                  <div className="mt-0.5 truncate font-medium text-slate-900">
-                    {(() => {
-                      const oid = Number(viewItemsUtilization.origin_id)
-                      if (!Number.isFinite(oid) || oid <= 0) return '—'
-                      return (
-                        viewItemsUtilization.origin_name || originNames[String(oid)] || 'Unknown origin'
-                      )
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <UtilizationItemsTable
-              items={Array.isArray(viewItemsUtilization.items) ? viewItemsUtilization.items : []}
-            />
-          </div>
+        {singleRecord || aggregateView ? (
+          <LineItemsPreviewTable
+            items={
+              singleRecord
+                ? Array.isArray(singleRecord.items)
+                  ? singleRecord.items
+                  : []
+                : Array.isArray(aggregateView?.items)
+                  ? aggregateView.items
+                  : []
+            }
+            variant="qty-only"
+          />
         ) : null}
-      </SplitDetailPanel>
+      </ItemsPreviewSidePanel>
     </section>
   )
 }

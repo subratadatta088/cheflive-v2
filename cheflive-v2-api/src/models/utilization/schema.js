@@ -115,6 +115,24 @@ const UtilizationListQuerySchema = z.object({
   organization_id: z.coerce.number().int().positive().optional(),
 })
 
+/**
+ * Body for POST /utilizations/grouped-items and POST /utilizations/all-items.
+ */
+const UtilizationGroupItemsBodySchema = z.object({
+  organization_id: z.coerce.number().int().positive().optional(),
+  ids: z
+    .preprocess((v) => {
+      if (v === undefined || v === null || v === '') return []
+      const parts = Array.isArray(v) ? v : [v]
+      const flat = parts
+        .flatMap((x) => String(x ?? '').split(','))
+        .map((s) => s.trim())
+        .filter(Boolean)
+      return flat
+    }, z.array(z.coerce.number().int().positive()).max(100))
+    .default([]),
+})
+
 module.exports = {
   UtilizationIdSchema,
   UtilizationCreateSchema,
@@ -123,4 +141,5 @@ module.exports = {
   UtilizationRowSchema,
   UtilizationApiRowSchema,
   UtilizationListQuerySchema,
+  UtilizationGroupItemsBodySchema,
 }

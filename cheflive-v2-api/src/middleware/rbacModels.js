@@ -341,6 +341,12 @@ function withScopedModels(req, res, next) {
             purchase_ids,
           })
         },
+        getAllItems: async ({ purchase_ids } = {}) => {
+          return await purchaseDal.getAllItems({
+            organization_id: req.user.organization_id,
+            purchase_ids,
+          })
+        },
         getItemsByLowStock: async () => {
           return await purchaseDal.getItemsByLowStock({
             organization_id: req.user.organization_id,
@@ -419,6 +425,18 @@ function withScopedModels(req, res, next) {
           if (existing.organization_id !== req.user.organization_id) return forbidden(res)
           return await transferDal.deleteById(id)
         },
+        groupItemsByIngredient: async ({ transfer_ids } = {}) => {
+          return await transferDal.groupItemsByIngredient({
+            organization_id: req.user.organization_id,
+            transfer_ids,
+          })
+        },
+        getAllItems: async ({ transfer_ids } = {}) => {
+          return await transferDal.getAllItems({
+            organization_id: req.user.organization_id,
+            transfer_ids,
+          })
+        },
       },
       transferItem: {
         create: async (data) => {
@@ -474,6 +492,18 @@ function withScopedModels(req, res, next) {
           if (!existing) return false
           if (existing.organization_id !== req.user.organization_id) return forbidden(res)
           return await utilizationDal.deleteById(id)
+        },
+        groupItemsByIngredient: async ({ utilization_ids } = {}) => {
+          return await utilizationDal.groupItemsByIngredient({
+            organization_id: req.user.organization_id,
+            utilization_ids,
+          })
+        },
+        getAllItems: async ({ utilization_ids } = {}) => {
+          return await utilizationDal.getAllItems({
+            organization_id: req.user.organization_id,
+            utilization_ids,
+          })
         },
       },
       utilizationItem: {
@@ -694,6 +724,12 @@ function withScopedModels(req, res, next) {
           purchase_ids,
         })
       },
+      getAllItems: async ({ purchase_ids } = {}) => {
+        return await purchaseDal.getAllItems({
+          organization_id: req.user.organization_id,
+          purchase_ids,
+        })
+      },
       getItemsByLowStock: async () => {
         return await purchaseDal.getItemsByLowStock({
           organization_id: req.user.organization_id,
@@ -730,6 +766,18 @@ function withScopedModels(req, res, next) {
       list: async (query) => {
         return await transferDal.list({ ...query, organization_id: req.user.organization_id })
       },
+      groupItemsByIngredient: async ({ transfer_ids } = {}) => {
+        return await transferDal.groupItemsByIngredient({
+          organization_id: req.user.organization_id,
+          transfer_ids,
+        })
+      },
+      getAllItems: async ({ transfer_ids } = {}) => {
+        return await transferDal.getAllItems({
+          organization_id: req.user.organization_id,
+          transfer_ids,
+        })
+      },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),
     },
@@ -757,6 +805,18 @@ function withScopedModels(req, res, next) {
       },
       list: async (query) => {
         return await utilizationDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      groupItemsByIngredient: async ({ utilization_ids } = {}) => {
+        return await utilizationDal.groupItemsByIngredient({
+          organization_id: req.user.organization_id,
+          utilization_ids,
+        })
+      },
+      getAllItems: async ({ utilization_ids } = {}) => {
+        return await utilizationDal.getAllItems({
+          organization_id: req.user.organization_id,
+          utilization_ids,
+        })
       },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),

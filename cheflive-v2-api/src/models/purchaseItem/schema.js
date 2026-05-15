@@ -41,9 +41,15 @@ const PurchaseItemRowSchema = z.object({
   deleted_at: z.string().optional().nullable(),
 })
 
-/** Row when `purchase_items` is joined with `ingredients` (list/getById). */
+/** Row when `purchase_items` is joined with `ingredients` (list/getById, all-items). */
 const PurchaseItemApiRowSchema = PurchaseItemRowSchema.extend({
   ingredient_name: z.string().nullable().optional(),
+  /** Alias of unit_price on flat all-items responses. */
+  price: z.number().nullable().optional(),
+  /** Line extended amount from SQL: qty × price. */
+  subtotal: z.number().nullable().optional(),
+  ingredient_default_unit: z.string().nullable().optional(),
+  item_code: z.number().int().nullable().optional(),
 })
 
 const PurchaseItemListQuerySchema = z.object({

@@ -77,6 +77,9 @@ const PurchaseGroupItemsBodySchema = z.object({
     .default([]),
 })
 
+/** Body for POST /purchases/all-items (same shape as grouped-items). */
+const PurchaseAllItemsBodySchema = PurchaseGroupItemsBodySchema
+
 module.exports = {
   PurchaseIdSchema,
   PurchaseCreateSchema,
@@ -86,4 +89,5 @@ module.exports = {
   PurchaseApiRowSchema,
   PurchaseListQuerySchema,
   PurchaseGroupItemsBodySchema,
+  PurchaseAllItemsBodySchema,
 }

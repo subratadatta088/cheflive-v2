@@ -85,15 +85,15 @@ function buildAppMenu(mainWindow) {
       ],
     },
     {
-      label: 'Report',
+      label: 'Analytics',
       submenu: [
         {
-          label: 'Purchase report',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/report/purchases' }),
+          label: 'Purchases',
+          click: () => mainWindow.webContents.send('app:navigate', { path: '/analytics/purchases' }),
         },
         {
-          label: 'Usage report',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/report/usage' }),
+          label: 'Utilizations',
+          click: () => mainWindow.webContents.send('app:navigate', { path: '/analytics/utilizations' }),
         },
       ],
     },

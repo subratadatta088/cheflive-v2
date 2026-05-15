@@ -58,3 +58,40 @@ export async function deleteTransferById(id) {
   return res.data
 }
 
+function normalizeTransferAggregateResponse(data, ids) {
+  return {
+    transfer_ids: Array.isArray(data?.transfer_ids) ? data.transfer_ids.map((v) => Number(v)).filter(Number.isFinite) : ids,
+    found_transfer_ids: Array.isArray(data?.found_transfer_ids)
+      ? data.found_transfer_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : [],
+    missing_ids: Array.isArray(data?.missing_ids)
+      ? data.missing_ids.map((v) => Number(v)).filter(Number.isFinite)
+      : [],
+    items: Array.isArray(data?.items) ? data.items : [],
+    subtotal: Number.isFinite(Number(data?.subtotal)) ? Number(data.subtotal) : 0,
+  }
+}
+
+function transferAggregateBody(payload) {
+  const idsRaw = Array.isArray(payload?.ids) ? payload.ids : []
+  const ids = [...new Set(idsRaw.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
+  const body = { ids }
+  const orgId = payload?.organization_id != null ? Number(payload.organization_id) : NaN
+  if (Number.isFinite(orgId) && orgId > 0) body.organization_id = orgId
+  return { ids, body }
+}
+
+/** POST /transfers/grouped-items */
+export async function getGroupedTransferItems(payload) {
+  const { ids, body } = transferAggregateBody(payload)
+  const res = await api.post('transfers/grouped-items', body)
+  return normalizeTransferAggregateResponse(res.data ?? {}, ids)
+}
+
+/** POST /transfers/all-items */
+export async function getAllTransferItems(payload) {
+  const { ids, body } = transferAggregateBody(payload)
+  const res = await api.post('transfers/all-items', body)
+  return normalizeTransferAggregateResponse(res.data ?? {}, ids)
+}
+

@@ -473,6 +473,95 @@ class PurchaseSqliteDAL extends PurchaseModel {
   }
 
   /**
+   * Flat purchase line items across multiple purchases, joined with ingredients.
+   * Line `subtotal` and top-level `subtotal` are computed in SQL (qty × unit_price).
+   *
+   * @param {{ organization_id: number, purchase_ids: number[] }} params
+   */
+  async getAllItems({ organization_id, purchase_ids }) {
+    const org = Number(organization_id)
+    if (!Number.isFinite(org) || org <= 0) throw new Error('Invalid organization_id')
+
+    const ids = Array.isArray(purchase_ids)
+      ? [...new Set(purchase_ids.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))]
+      : []
+
+    if (!ids.length) {
+      return { purchase_ids: [], found_purchase_ids: [], missing_ids: [], items: [], subtotal: 0 }
+    }
+
+    const placeholders = ids.map(() => '?').join(', ')
+
+    const purchaseRows = await all(
+      this.db,
+      `SELECT id
+       FROM purchases
+       WHERE organization_id = ?
+         AND id IN (${placeholders})
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [org, ...ids]
+    )
+    const foundPurchaseIds = purchaseRows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n))
+    const missingIds = ids.filter((id) => !foundPurchaseIds.includes(id))
+
+    if (!foundPurchaseIds.length) {
+      return { purchase_ids: ids, found_purchase_ids: [], missing_ids: missingIds, items: [], subtotal: 0 }
+    }
+
+    const foundPlaceholders = foundPurchaseIds.map(() => '?').join(', ')
+    const itemParams = [org, ...foundPurchaseIds]
+
+    const rows = await all(
+      this.db,
+      `SELECT pi.id,
+              pi.organization_id,
+              pi.purchase_id,
+              pi.ingredient_id,
+              pi.qty,
+              pi.unit,
+              pi.unit_price AS price,
+              (pi.qty * pi.unit_price) AS subtotal,
+              pi.created_by,
+              pi.created_at,
+              pi.updated_at,
+              pi.deleted_at,
+              i.name AS ingredient_name,
+              i.unit AS ingredient_default_unit,
+              i.item_code
+       FROM purchase_items pi
+       LEFT JOIN ingredients i
+         ON i.id = pi.ingredient_id
+        AND i.organization_id = pi.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE pi.organization_id = ?
+         AND pi.purchase_id IN (${foundPlaceholders})
+         AND (pi.deleted_at IS NULL OR pi.deleted_at = '')
+       ORDER BY pi.purchase_id ASC, pi.id ASC`,
+      itemParams
+    )
+
+    const totalRow = await get(
+      this.db,
+      `SELECT COALESCE(SUM(pi.qty * pi.unit_price), 0) AS subtotal
+       FROM purchase_items pi
+       WHERE pi.organization_id = ?
+         AND pi.purchase_id IN (${foundPlaceholders})
+         AND (pi.deleted_at IS NULL OR pi.deleted_at = '')`,
+      itemParams
+    )
+
+    const items = rows.map((r) => normalizePurchaseItemApiRow(r))
+    const subtotal = Number(totalRow?.subtotal)
+    return {
+      purchase_ids: ids,
+      found_purchase_ids: foundPurchaseIds,
+      missing_ids: missingIds,
+      items,
+      subtotal: Number.isFinite(subtotal) ? subtotal : 0,
+    }
+  }
+
+  /**
    * Ingredients at the default origin where current stock is below reorder threshold.
    * Returns purchase-line-ready rows in a single query.
    *

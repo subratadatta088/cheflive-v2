@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Boxes, Info, PanelRightOpen, PlusCircle, Trash2 } from 'lucide-react'
+import { Boxes, Info, List, PanelRightOpen, PlusCircle, Trash2 } from 'lucide-react'
 import { Breadcrumb } from '../../components/Breadcrumb.jsx'
 import { Button } from '../../components/Button.jsx'
 import { ConfirmModal } from '../../components/ConfirmModal.jsx'
 import { DataTable } from '../../components/DataTable.jsx'
 import { DateTime } from '../../components/DateTime.jsx'
-import { deletePurchaseById, getGroupedPurchaseItems, listPurchases } from '../../apis/purchase.js'
+import {
+  deletePurchaseById,
+  getAllPurchaseItems,
+  getGroupedPurchaseItems,
+  listPurchases,
+} from '../../apis/purchase.js'
 import { useToast } from '../../components/Toaster.jsx'
-import { SplitDetailPanel } from '../../components/SplitDetailPanel.jsx'
+import { ItemsPreviewSidePanel, moneySummaryValue } from '../../components/itemsPreview/ItemsPreviewSidePanel.jsx'
+import { LineItemsPreviewTable } from '../../components/itemsPreview/LineItemsPreviewTable.jsx'
+import { useItemsPreviewPanel } from '../../hooks/useItemsPreviewPanel.js'
+import { formatMoney } from '../../utils/formatters.js'
+import { normalizeSelectedIds } from '../../utils/selectionIds.js'
 import { OriginsProvider, useOrigins } from '../../context/OriginsContext.jsx'
 
 /** @param {unknown} value */
@@ -50,114 +59,6 @@ function subtotalFromRow(row) {
   return sum
 }
 
-function formatQtyDisplay(n) {
-  if (!Number.isFinite(n)) return '—'
-  return n % 1 === 0 ? String(n) : n.toFixed(3).replace(/\.?0+$/, '')
-}
-
-function formatMoney(n) {
-  if (!Number.isFinite(n)) return '—'
-  return n.toFixed(2)
-}
-
-/** @param {unknown} it */
-function lineExtended(it) {
-  const q = Number(it?.qty)
-  const raw = it?.unit_price
-  const price =
-    raw === null || raw === undefined || raw === '' ? NaN : Number(raw)
-  if (!Number.isFinite(q) || !Number.isFinite(price)) return null
-  return q * price
-}
-
-function normalizeSelectedIds(selectedRowIds) {
-  const seen = new Set()
-  const out = []
-  for (const raw of selectedRowIds) {
-    const n = Number(raw)
-    if (!Number.isFinite(n) || n <= 0) continue
-    if (seen.has(n)) continue
-    seen.add(n)
-    out.push(n)
-  }
-  out.sort((a, b) => a - b)
-  return out
-}
-
-/**
- * Shared items table used by both the single-purchase view and the grouped view.
- *
- * - Single mode (`variant="single"`): items come from `GET /purchases/:id`. Each row has
- *   its own `unit_price` and the line total is computed as `qty × unit_price`.
- * - Grouped mode (`variant="grouped"`): items come from `POST /purchases/grouped-items`.
- *   `unit_price` is intentionally absent (prices vary across days), so the column is hidden
- *   and the line total is the backend-supplied per-ingredient `subtotal`.
- *
- * @param {{
- *   items: Array<Record<string, unknown>>,
- *   variant?: 'single' | 'grouped',
- * }} props
- */
-function PurchaseItemsTable({ items, variant = 'single' }) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return <p className="text-sm text-slate-600">No line items.</p>
-  }
-  const grouped = variant === 'grouped'
-  return (
-    <table className="w-full min-w-[520px] border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
-          <th className="pb-2 pe-3">Ingredient</th>
-          <th className="w-24 pb-2 pe-3 text-right">Qty</th>
-          <th className="w-24 pb-2 pe-3">Unit</th>
-          {grouped ? null : <th className="w-28 pb-2 pe-3 text-right">Unit price</th>}
-          <th className="w-28 pb-2 text-right">{grouped ? 'Subtotal' : 'Line total'}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((it) => {
-          const nameRaw =
-            it.ingredient_name != null && String(it.ingredient_name).trim() !== ''
-              ? String(it.ingredient_name).trim()
-              : ''
-          let lineTotal
-          if (grouped) {
-            const raw = it?.subtotal
-            const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw)
-            lineTotal = Number.isFinite(n) ? n : null
-          } else {
-            lineTotal = lineExtended(it)
-          }
-          return (
-            <tr key={it.id ?? `${it.ingredient_id}-${it.qty}`} className="border-b border-slate-100">
-              <td className="py-2 pe-3 text-slate-900">
-                <div className="font-medium">{nameRaw || 'Unknown ingredient'}</div>
-                {it.ingredient_id != null ? (
-                  <div className="text-xs tabular-nums text-slate-500">#{it.ingredient_id}</div>
-                ) : null}
-              </td>
-              <td className="py-2 pe-3 text-right tabular-nums">{formatQtyDisplay(Number(it.qty))}</td>
-              <td className="py-2 pe-3 text-slate-700">
-                {it.unit != null && String(it.unit).trim() !== '' ? String(it.unit) : '—'}
-              </td>
-              {grouped ? null : (
-                <td className="py-2 pe-3 text-right tabular-nums">
-                  {it.unit_price != null && Number.isFinite(Number(it.unit_price))
-                    ? formatMoney(Number(it.unit_price))
-                    : '—'}
-                </td>
-              )}
-              <td className="py-2 text-right tabular-nums text-slate-900">
-                {lineTotal !== null ? formatMoney(lineTotal) : '—'}
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
-  )
-}
-
 function PurchasesHistoryInnerPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
@@ -174,20 +75,14 @@ function PurchasesHistoryInnerPage() {
 
   const [openMenuForId, setOpenMenuForId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [viewItemsPurchase, setViewItemsPurchase] = useState(null)
   const [selectedRowIds, setSelectedRowIds] = useState(() => /** @type {number[]} */ ([]))
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
-  const [groupedItemsView, setGroupedItemsView] = useState(
-    () =>
-      /** @type {null | {
-       *   purchase_ids: number[],
-       *   found_purchase_ids: number[],
-       *   missing_ids: number[],
-       *   items: Array<Record<string, unknown>>,
-       *   subtotal: number,
-       * }} */ (null),
-  )
-  const [groupedItemsLoading, setGroupedItemsLoading] = useState(false)
+
+  const itemsPreview = useItemsPreviewPanel({
+    fetchGrouped: getGroupedPurchaseItems,
+    fetchFlat: getAllPurchaseItems,
+    onError: (text) => showToast({ theme: 'failure', duration: 6000, text }),
+  })
 
   useEffect(() => {
     if (!originsError) return
@@ -201,26 +96,6 @@ function PurchasesHistoryInnerPage() {
   useEffect(() => {
     if (selectedRowIds.length === 0 && bulkDeleteOpen) setBulkDeleteOpen(false)
   }, [selectedRowIds.length, bulkDeleteOpen])
-
-  const handleViewGroupedItems = useCallback(async () => {
-    const ids = normalizeSelectedIds(selectedRowIds)
-    if (ids.length === 0) return
-    setViewItemsPurchase(null)
-    setGroupedItemsLoading(true)
-    try {
-      const data = await getGroupedPurchaseItems({ ids })
-      setGroupedItemsView(data)
-    } catch (e) {
-      setGroupedItemsView(null)
-      showToast({
-        theme: 'failure',
-        duration: 6000,
-        text: e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Could not load grouped items.',
-      })
-    } finally {
-      setGroupedItemsLoading(false)
-    }
-  }, [selectedRowIds, showToast])
 
   const reload = useCallback(async () => {
     setError('')
@@ -322,9 +197,7 @@ function PurchasesHistoryInnerPage() {
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 onClick={(e) => {
                   e.stopPropagation()
-                  setGroupedItemsView(null)
-                  setGroupedItemsLoading(false)
-                  setViewItemsPurchase(r)
+                  itemsPreview.openSingle(r)
                 }}
                 aria-label="Open line items"
               >
@@ -414,7 +287,7 @@ function PurchasesHistoryInnerPage() {
         },
       },
     ],
-    [navigate, openMenuForId],
+    [navigate, openMenuForId, itemsPreview],
   )
 
   const pageSubtotalTotal = useMemo(() => {
@@ -426,7 +299,42 @@ function PurchasesHistoryInnerPage() {
     return sum
   }, [rows])
 
-  const panelOpen = Boolean(viewItemsPurchase) || Boolean(groupedItemsView) || groupedItemsLoading
+  const { singleRecord, aggregateView, aggregateLoading, mode, panelOpen, close } = itemsPreview
+
+  const panelTitle = (() => {
+    if (aggregateLoading || aggregateView) {
+      const prefix = mode === 'flat' ? 'All items' : 'Grouped items'
+      const ids = Array.isArray(aggregateView?.purchase_ids) ? aggregateView.purchase_ids : []
+      const found = Array.isArray(aggregateView?.found_purchase_ids) ? aggregateView.found_purchase_ids : []
+      return (
+        <>
+          {prefix}
+          {aggregateView ? (
+            <span className="ms-2 text-sm font-normal text-slate-500">
+              · {found.length}/{ids.length} {ids.length === 1 ? 'purchase' : 'purchases'}
+            </span>
+          ) : null}
+        </>
+      )
+    }
+    if (singleRecord) return <>Purchase #{singleRecord.id} — line items</>
+    return null
+  })()
+
+  const aggregateSummaryFields = aggregateView
+    ? [
+        {
+          label: mode === 'flat' ? 'Line items' : 'Ingredients',
+          value: Array.isArray(aggregateView.items) ? aggregateView.items.length : 0,
+        },
+        {
+          label: 'Subtotal',
+          value: (
+            <span className="font-semibold">{moneySummaryValue(aggregateView.subtotal)}</span>
+          ),
+        },
+      ]
+    : []
 
   return (
     <section className="flex w-full flex-col gap-0 lg:flex-row lg:items-stretch">
@@ -448,9 +356,13 @@ function PurchasesHistoryInnerPage() {
                     {selectedRowIds.length} selected
                   </span>
                 </span>
-                <Button variant="secondary" type="button" onClick={handleViewGroupedItems}>
+                <Button variant="secondary" type="button" onClick={() => itemsPreview.fetchGroupedView(selectedRowIds)}>
                   <Boxes className="h-4 w-4" aria-hidden="true" />
                   View grouped items
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => itemsPreview.fetchFlatView(selectedRowIds)}>
+                  <List className="h-4 w-4" aria-hidden="true" />
+                  View all items
                 </Button>
                 <Button variant="danger" type="button" onClick={() => setBulkDeleteOpen(true)}>
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -619,96 +531,52 @@ function PurchasesHistoryInnerPage() {
         />
       </div>
 
-      <SplitDetailPanel
+            <ItemsPreviewSidePanel
         open={panelOpen}
-        onClose={() => {
-          setViewItemsPurchase(null)
-          setGroupedItemsView(null)
-          setGroupedItemsLoading(false)
-        }}
-        title={
-          groupedItemsLoading || groupedItemsView ? (
-            <>
-              Grouped items
-              {groupedItemsView ? (
-                <span className="ms-2 text-sm font-normal text-slate-500">
-                  · {groupedItemsView.found_purchase_ids.length}/{groupedItemsView.purchase_ids.length}{' '}
-                  {groupedItemsView.purchase_ids.length === 1 ? 'purchase' : 'purchases'}
-                </span>
-              ) : null}
-            </>
-          ) : viewItemsPurchase ? (
-            <>Purchase #{viewItemsPurchase.id} — line items</>
-          ) : null
+        onClose={close}
+        title={panelTitle}
+        loading={aggregateLoading}
+        loadingMessage={
+          mode === 'flat' ? 'Loading all items…' : mode === 'grouped' ? 'Loading grouped items…' : 'Loading items…'
         }
+        summaryFields={
+          singleRecord
+            ? [
+                {
+                  label: 'Purchase date',
+                  value: formatPurchaseDate(singleRecord.date),
+                },
+                {
+                  label: 'Stored at',
+                  value:
+                    singleRecord.origin_name != null && String(singleRecord.origin_name).trim() !== ''
+                      ? String(singleRecord.origin_name).trim()
+                      : '—',
+                },
+                {
+                  label: 'Line totals',
+                  value: (
+                    <span className="font-semibold">{moneySummaryValue(subtotalFromRow(singleRecord))}</span>
+                  ),
+                },
+              ]
+            : aggregateSummaryFields
+        }
+        missingIds={Array.isArray(aggregateView?.missing_ids) ? aggregateView.missing_ids : []}
+        entityLabel="purchase"
       >
-        {groupedItemsLoading ? (
-          <p className="text-sm text-slate-600">Loading grouped items…</p>
-        ) : groupedItemsView ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:divide-x sm:divide-slate-200">
-                <div className="min-w-0 sm:pe-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Ingredients</div>
-                  <div className="mt-0.5 font-medium tabular-nums text-slate-900">
-                    {groupedItemsView.items.length}
-                  </div>
-                </div>
-                <div className="min-w-0 sm:ps-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Subtotal</div>
-                  <div className="mt-0.5 font-semibold tabular-nums text-slate-900">
-                    {formatMoney(Number(groupedItemsView.subtotal) || 0)}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {groupedItemsView.missing_ids.length > 0 ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                {groupedItemsView.missing_ids.length === 1
-                  ? `1 selected purchase could not be loaded (#${groupedItemsView.missing_ids[0]}).`
-                  : `${groupedItemsView.missing_ids.length} selected purchases could not be loaded: ${groupedItemsView.missing_ids
-                      .map((pid) => `#${pid}`)
-                      .join(', ')}.`}
-              </div>
-            ) : null}
-
-            <PurchaseItemsTable items={groupedItemsView.items} variant="grouped" />
-          </div>
-        ) : viewItemsPurchase ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:divide-x sm:divide-slate-200">
-                <div className="min-w-0 sm:pe-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Purchase date</div>
-                  <div className="mt-0.5 font-medium text-slate-900">{formatPurchaseDate(viewItemsPurchase.date)}</div>
-                </div>
-                <div className="min-w-0 sm:px-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Stored at</div>
-                  <div
-                    className="mt-0.5 truncate font-medium text-slate-900"
-                    title={
-                      viewItemsPurchase.origin_name != null ? String(viewItemsPurchase.origin_name).trim() : ''
-                    }
-                  >
-                    {viewItemsPurchase.origin_name != null && String(viewItemsPurchase.origin_name).trim() !== ''
-                      ? String(viewItemsPurchase.origin_name).trim()
-                      : '—'}
-                  </div>
-                </div>
-                <div className="min-w-0 sm:ps-4">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Line totals</div>
-                  <div className="mt-0.5 font-semibold tabular-nums text-slate-900">
-                    {formatMoney(subtotalFromRow(viewItemsPurchase))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <PurchaseItemsTable items={Array.isArray(viewItemsPurchase.items) ? viewItemsPurchase.items : []} />
-          </div>
+        {singleRecord ? (
+          <LineItemsPreviewTable
+            items={Array.isArray(singleRecord.items) ? singleRecord.items : []}
+            variant="purchase-single"
+          />
+        ) : aggregateView ? (
+          <LineItemsPreviewTable
+            items={Array.isArray(aggregateView.items) ? aggregateView.items : []}
+            variant={mode === 'flat' ? 'purchase-flat' : 'purchase-grouped'}
+          />
         ) : null}
-      </SplitDetailPanel>
+      </ItemsPreviewSidePanel>
     </section>
   )
 }

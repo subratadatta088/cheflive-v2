@@ -27,6 +27,14 @@ class TransferService {
     return await this.models.transfer.list(query)
   }
 
+  async groupItemsByIngredient(params) {
+    return await this.models.transfer.groupItemsByIngredient(params)
+  }
+
+  async getAllItems(params) {
+    return await this.models.transfer.getAllItems(params)
+  }
+
   async listByPurchaseId(organization_id, purchase_id) {
     return await this.models.transfer.listByPurchaseId({
       organization_id: Number(organization_id),

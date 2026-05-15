@@ -543,6 +543,217 @@ class TransferSqliteDAL extends TransferModel {
     })
   }
 
+  /**
+   * @param {{ organization_id: number, transfer_ids: number[] }} params
+   */
+  async groupItemsByIngredient({ organization_id, transfer_ids }) {
+    const org = Number(organization_id)
+    if (!Number.isFinite(org) || org <= 0) throw new Error('Invalid organization_id')
+
+    const ids = Array.isArray(transfer_ids)
+      ? [...new Set(transfer_ids.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))]
+      : []
+
+    if (!ids.length) {
+      return { transfer_ids: [], found_transfer_ids: [], missing_ids: [], items: [], subtotal: 0 }
+    }
+
+    const placeholders = ids.map(() => '?').join(', ')
+
+    const transferRows = await all(
+      this.db,
+      `SELECT id
+       FROM transfers
+       WHERE organization_id = ?
+         AND id IN (${placeholders})
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [org, ...ids]
+    )
+    const foundTransferIds = transferRows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n))
+    const missingIds = ids.filter((id) => !foundTransferIds.includes(id))
+
+    if (!foundTransferIds.length) {
+      return { transfer_ids: ids, found_transfer_ids: [], missing_ids: missingIds, items: [], subtotal: 0 }
+    }
+
+    const foundPlaceholders = foundTransferIds.map(() => '?').join(', ')
+
+    const rows = await all(
+      this.db,
+      `SELECT ti.ingredient_id,
+              ti.qty,
+              ti.unit,
+              i.name AS ingredient_name,
+              i.unit AS default_unit
+       FROM transfer_items ti
+       LEFT JOIN ingredients i
+         ON i.id = ti.ingredient_id
+        AND i.organization_id = ti.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE ti.organization_id = ?
+         AND ti.transfer_id IN (${foundPlaceholders})
+         AND (ti.deleted_at IS NULL OR ti.deleted_at = '')`,
+      [org, ...foundTransferIds]
+    )
+
+    if (!rows.length) {
+      return { transfer_ids: ids, found_transfer_ids: foundTransferIds, missing_ids: missingIds, items: [], subtotal: 0 }
+    }
+
+    const ingredientIds = [...new Set(rows.map((r) => Number(r.ingredient_id)).filter((n) => Number.isFinite(n) && n > 0))]
+    let convRows = []
+    if (ingredientIds.length) {
+      const convPlaceholders = ingredientIds.map(() => '?').join(', ')
+      convRows = await all(
+        this.db,
+        `SELECT ingredient_id, from_unit, to_unit, factor
+         FROM ingredient_unit_conversions
+         WHERE organization_id = ?
+           AND ingredient_id IN (${convPlaceholders})
+           AND (deleted_at IS NULL OR deleted_at = '')`,
+        [org, ...ingredientIds]
+      )
+    }
+
+    const convKey = (ingId, fromUnit, toUnit) => `${ingId}|${fromUnit}|${toUnit}`
+    const convMap = new Map()
+    for (const c of convRows) {
+      const k = convKey(Number(c.ingredient_id), String(c.from_unit || '').trim(), String(c.to_unit || '').trim())
+      const f = Number(c.factor)
+      if (Number.isFinite(f) && f > 0) convMap.set(k, f)
+    }
+
+    const grouped = new Map()
+    for (const r of rows) {
+      const ingredient_id = Number(r.ingredient_id)
+      if (!Number.isFinite(ingredient_id) || ingredient_id <= 0) continue
+
+      const defaultUnit = String(r.default_unit || '').trim()
+      if (!defaultUnit) continue
+
+      const rawQty = Number(r.qty)
+      if (!Number.isFinite(rawQty)) continue
+
+      const fromUnit = r.unit ? String(r.unit).trim() : ''
+      let factor = 1
+      if (fromUnit && fromUnit !== defaultUnit) {
+        const f = convMap.get(convKey(ingredient_id, fromUnit, defaultUnit))
+        if (!f) {
+          const err = new Error(
+            `Unit conversion not found for ingredient ${ingredient_id}: ${fromUnit} -> ${defaultUnit}`
+          )
+          err.code = 'UNIT_CONVERSION_NOT_FOUND'
+          throw err
+        }
+        factor = f
+      }
+
+      const qtyDefault = rawQty * factor
+
+      let g = grouped.get(ingredient_id)
+      if (!g) {
+        g = { ingredient_id, ingredient_name: r.ingredient_name ?? null, unit: defaultUnit, qty: 0 }
+        grouped.set(ingredient_id, g)
+      }
+      g.qty += qtyDefault
+    }
+
+    const items = []
+    for (const g of grouped.values()) {
+      items.push({
+        ingredient_id: g.ingredient_id,
+        ingredient_name: g.ingredient_name,
+        qty: g.qty,
+        unit: g.unit,
+      })
+    }
+
+    items.sort((a, b) =>
+      String(a.ingredient_name || '').localeCompare(String(b.ingredient_name || '')),
+    )
+
+    return {
+      transfer_ids: ids,
+      found_transfer_ids: foundTransferIds,
+      missing_ids: missingIds,
+      items,
+      subtotal: 0,
+    }
+  }
+
+  /**
+   * @param {{ organization_id: number, transfer_ids: number[] }} params
+   */
+  async getAllItems({ organization_id, transfer_ids }) {
+    const org = Number(organization_id)
+    if (!Number.isFinite(org) || org <= 0) throw new Error('Invalid organization_id')
+
+    const ids = Array.isArray(transfer_ids)
+      ? [...new Set(transfer_ids.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))]
+      : []
+
+    if (!ids.length) {
+      return { transfer_ids: [], found_transfer_ids: [], missing_ids: [], items: [], subtotal: 0 }
+    }
+
+    const placeholders = ids.map(() => '?').join(', ')
+
+    const transferRows = await all(
+      this.db,
+      `SELECT id
+       FROM transfers
+       WHERE organization_id = ?
+         AND id IN (${placeholders})
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [org, ...ids]
+    )
+    const foundTransferIds = transferRows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n))
+    const missingIds = ids.filter((id) => !foundTransferIds.includes(id))
+
+    if (!foundTransferIds.length) {
+      return { transfer_ids: ids, found_transfer_ids: [], missing_ids: missingIds, items: [], subtotal: 0 }
+    }
+
+    const foundPlaceholders = foundTransferIds.map(() => '?').join(', ')
+    const itemParams = [org, ...foundTransferIds]
+
+    const rows = await all(
+      this.db,
+      `SELECT ti.id,
+              ti.organization_id,
+              ti.transfer_id,
+              ti.ingredient_id,
+              ti.qty,
+              ti.unit,
+              ti.created_by,
+              ti.created_at,
+              ti.updated_at,
+              ti.deleted_at,
+              i.name AS ingredient_name,
+              i.unit AS ingredient_default_unit,
+              i.item_code
+       FROM transfer_items ti
+       LEFT JOIN ingredients i
+         ON i.id = ti.ingredient_id
+        AND i.organization_id = ti.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE ti.organization_id = ?
+         AND ti.transfer_id IN (${foundPlaceholders})
+         AND (ti.deleted_at IS NULL OR ti.deleted_at = '')
+       ORDER BY ti.transfer_id ASC, ti.id ASC`,
+      itemParams
+    )
+
+    const items = rows.map((r) => normalizeTransferItemApiRow(r))
+    return {
+      transfer_ids: ids,
+      found_transfer_ids: foundTransferIds,
+      missing_ids: missingIds,
+      items,
+      subtotal: 0,
+    }
+  }
+
   async processTransferCreated(transferId, meta = {}) {
     const tid = TransferIdSchema.parse(transferId)
     return await withTransaction(this.db, async () => {

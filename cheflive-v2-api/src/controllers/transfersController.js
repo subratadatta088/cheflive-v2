@@ -1,5 +1,6 @@
 const {
   TransferCreateSchema,
+  TransferGroupItemsBodySchema,
   TransferIdSchema,
   TransferListQuerySchema,
   TransferUpdateSchema,
@@ -104,6 +105,55 @@ class TransfersController {
     const service = new TransferService({ models: req.models, user: req.user })
     const ok = await service.deleteById(idParsed.data)
     return res.json({ ok: Boolean(ok) })
+  }
+
+  groupItemsByIngredient = async (req, res) => {
+    const parsed = TransferGroupItemsBodySchema.safeParse(req.body ?? {})
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' })
+
+    let organization_id
+    if (isSuperAdmin(req)) {
+      organization_id = Number(parsed.data.organization_id)
+      if (!Number.isFinite(organization_id) || organization_id <= 0)
+        return res.status(400).json({ error: 'organization_id is required' })
+    } else {
+      organization_id = req.user.organization_id
+    }
+
+    try {
+      const service = new TransferService({ models: req.models, user: req.user })
+      const result = await service.groupItemsByIngredient({
+        organization_id,
+        transfer_ids: parsed.data.ids,
+      })
+      return res.json(result)
+    } catch (e) {
+      if (e?.code === 'UNIT_CONVERSION_NOT_FOUND') {
+        return res.status(400).json({ error: String(e.message) })
+      }
+      throw e
+    }
+  }
+
+  getAllItems = async (req, res) => {
+    const parsed = TransferGroupItemsBodySchema.safeParse(req.body ?? {})
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' })
+
+    let organization_id
+    if (isSuperAdmin(req)) {
+      organization_id = Number(parsed.data.organization_id)
+      if (!Number.isFinite(organization_id) || organization_id <= 0)
+        return res.status(400).json({ error: 'organization_id is required' })
+    } else {
+      organization_id = req.user.organization_id
+    }
+
+    const service = new TransferService({ models: req.models, user: req.user })
+    const result = await service.getAllItems({
+      organization_id,
+      transfer_ids: parsed.data.ids,
+    })
+    return res.json(result)
   }
 }
 

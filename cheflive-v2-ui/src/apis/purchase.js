@@ -87,14 +87,7 @@ export async function getPurchaseLowStockItems() {
   return { items: Array.isArray(data?.items) ? data.items : [] }
 }
 
-export async function getGroupedPurchaseItems(payload) {
-  const idsRaw = Array.isArray(payload?.ids) ? payload.ids : []
-  const ids = [...new Set(idsRaw.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
-  const body = { ids }
-  const orgId = payload?.organization_id != null ? Number(payload.organization_id) : NaN
-  if (Number.isFinite(orgId) && orgId > 0) body.organization_id = orgId
-  const res = await api.post('purchases/grouped-items', body)
-  const data = res.data ?? {}
+function normalizePurchaseAggregateResponse(data, ids) {
   return {
     purchase_ids: Array.isArray(data?.purchase_ids) ? data.purchase_ids.map((v) => Number(v)).filter(Number.isFinite) : ids,
     found_purchase_ids: Array.isArray(data?.found_purchase_ids)
@@ -106,4 +99,27 @@ export async function getGroupedPurchaseItems(payload) {
     items: Array.isArray(data?.items) ? data.items : [],
     subtotal: Number.isFinite(Number(data?.subtotal)) ? Number(data.subtotal) : 0,
   }
+}
+
+function purchaseAggregateBody(payload) {
+  const idsRaw = Array.isArray(payload?.ids) ? payload.ids : []
+  const ids = [...new Set(idsRaw.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]
+  const body = { ids }
+  const orgId = payload?.organization_id != null ? Number(payload.organization_id) : NaN
+  if (Number.isFinite(orgId) && orgId > 0) body.organization_id = orgId
+  return { ids, body }
+}
+
+/** POST /purchases/grouped-items */
+export async function getGroupedPurchaseItems(payload) {
+  const { ids, body } = purchaseAggregateBody(payload)
+  const res = await api.post('purchases/grouped-items', body)
+  return normalizePurchaseAggregateResponse(res.data ?? {}, ids)
+}
+
+/** POST /purchases/all-items */
+export async function getAllPurchaseItems(payload) {
+  const { ids, body } = purchaseAggregateBody(payload)
+  const res = await api.post('purchases/all-items', body)
+  return normalizePurchaseAggregateResponse(res.data ?? {}, ids)
 }

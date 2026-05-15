@@ -45,6 +45,8 @@ const TransferItemRowSchema = z.object({
 /** Row when `transfer_items` is joined with `ingredients` (list/getById, nested on transfers). */
 const TransferItemApiRowSchema = TransferItemRowSchema.extend({
   ingredient_name: z.string().nullable().optional(),
+  ingredient_default_unit: z.string().nullable().optional(),
+  item_code: z.number().int().nullable().optional(),
 })
 
 const TransferItemListQuerySchema = z.object({

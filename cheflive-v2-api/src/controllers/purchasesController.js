@@ -1,4 +1,5 @@
 const {
+  PurchaseAllItemsBodySchema,
   PurchaseCreateSchema,
   PurchaseGroupItemsBodySchema,
   PurchaseIdSchema,
@@ -154,6 +155,27 @@ class PurchasesController {
       }
       throw e
     }
+  }
+
+  getAllItems = async (req, res) => {
+    const parsed = PurchaseAllItemsBodySchema.safeParse(req.body ?? {})
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' })
+
+    let organization_id
+    if (isSuperAdmin(req)) {
+      organization_id = Number(parsed.data.organization_id)
+      if (!Number.isFinite(organization_id) || organization_id <= 0)
+        return res.status(400).json({ error: 'organization_id is required' })
+    } else {
+      organization_id = req.user.organization_id
+    }
+
+    const service = new PurchaseService({ models: req.models, user: req.user })
+    const result = await service.getAllItems({
+      organization_id,
+      purchase_ids: parsed.data.ids,
+    })
+    return res.json(result)
   }
 }
 
