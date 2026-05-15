@@ -36,6 +36,11 @@ const PreparationItemRowSchema = z.object({
   deleted_at: z.string().optional().nullable(),
 })
 
+const PreparationItemApiRowSchema = PreparationItemRowSchema.extend({
+  ingredient_name: z.string().nullable().optional(),
+  ingredient_item_code: z.coerce.string().optional().nullable(),
+})
+
 const PreparationItemListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
@@ -49,6 +54,7 @@ module.exports = {
   PreparationItemNestedCreateSchema,
   PreparationItemUpdateSchema,
   PreparationItemRowSchema,
+  PreparationItemApiRowSchema,
   PreparationItemListQuerySchema,
 }
 

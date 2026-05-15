@@ -13,6 +13,8 @@ router.post('/', controller.create)
 
 router.post('/grouped-items', controller.groupItemsByIngredient)
 
+router.get('/low-stock-items', controller.getItemsByLowStock)
+
 router.get('/', controller.list)
 
 router.get('/:id', controller.getById)

@@ -1,6 +1,10 @@
 const { PurchaseService } = require('../services/purchaseService')
 const { TransferService } = require('../services/transferService')
 
+function followUpPurchaseTransferNote(purchaseId) {
+  return `Auto transfer after purchase #${purchaseId}`
+}
+
 async function convertPurchaseItemsToTransferItems(models, purchase) {
   const items = Array.isArray(purchase.items) ? purchase.items : []
   const out = []
@@ -34,6 +38,30 @@ async function convertPurchaseItemsToTransferItems(models, purchase) {
   }
 
   return out
+}
+
+/**
+ * @param {TransferService} transferService
+ * @param {number} organization_id
+ * @param {number} purchase_id
+ */
+async function findPurchaseLinkedTransfers(transferService, organization_id, purchase_id) {
+  const transfers = await transferService.listByPurchaseId(organization_id, purchase_id)
+  const pid = Number(purchase_id)
+  const followUpNote = followUpPurchaseTransferNote(pid)
+
+  const stockIn =
+    transfers.find((t) => Number(t.from_purchase_id) === pid) || null
+  const followUp =
+    transfers.find(
+      (t) =>
+        !t.from_purchase_id &&
+        String(t.note || '').trim() === followUpNote &&
+        t.from_origin_id &&
+        t.to_origin_id
+    ) || null
+
+  return { stockIn, followUp, all: transfers }
 }
 
 async function onPurchaseCreated(ctx) {
@@ -75,17 +103,77 @@ async function onPurchaseCreated(ctx) {
       from_origin_id: purchase.origin_id,
       to_origin_id: transferTo,
       transfer_date: purchase.date,
-      note: `Auto transfer after purchase #${purchase.id}`,
+      note: followUpPurchaseTransferNote(purchase.id),
       items: transferItems,
     })
   }
 }
 
-// For now, updates/deletes are handled by emitting TransferEntry* from the service layer.
-// Purchase update/delete can be implemented by creating compensating transfers or by
-// editing the auto transfer once we persist linkage.
-async function onPurchaseUpdated(_ctx) {}
-async function onPurchaseDeleted(_ctx) {}
+async function onPurchaseUpdated(ctx) {
+  const { models, payload } = ctx
+  const next = payload?.next
+  if (!next || next.deleted_at) return
 
-module.exports = { onPurchaseCreated, onPurchaseUpdated, onPurchaseDeleted }
+  const user = {
+    id: payload.actor_user_id ?? null,
+    organization_id: payload.organization_id,
+  }
 
+  const purchaseService = new PurchaseService({ models, user })
+  const transferService = new TransferService({ models, user })
+
+  const purchase = await purchaseService.getById(next.id)
+  if (!purchase) throw new Error('Purchase not found')
+
+  const transferItems = await convertPurchaseItemsToTransferItems(models, purchase)
+  const { stockIn, followUp } = await findPurchaseLinkedTransfers(
+    transferService,
+    Number(purchase.organization_id),
+    purchase.id
+  )
+
+  if (stockIn) {
+    await transferService.updateById(stockIn.id, {
+      to_origin_id: purchase.origin_id,
+      transfer_date: purchase.date,
+      items: transferItems,
+    })
+  }
+
+  if (followUp) {
+    await transferService.updateById(followUp.id, {
+      from_origin_id: purchase.origin_id,
+      transfer_date: purchase.date,
+      items: transferItems,
+    })
+  }
+}
+
+async function onPurchaseDeleted(ctx) {
+  const { models, payload } = ctx
+  const previous = payload?.previous
+  if (!previous || previous.deleted_at) return
+
+  const user = {
+    id: payload.actor_user_id ?? null,
+    organization_id: payload.organization_id,
+  }
+
+  const transferService = new TransferService({ models, user })
+  const { stockIn, followUp } = await findPurchaseLinkedTransfers(
+    transferService,
+    Number(previous.organization_id),
+    previous.id
+  )
+
+  if (followUp) await transferService.deleteById(followUp.id)
+  if (stockIn) await transferService.deleteById(stockIn.id)
+}
+
+module.exports = {
+  onPurchaseCreated,
+  onPurchaseUpdated,
+  onPurchaseDeleted,
+  convertPurchaseItemsToTransferItems,
+  findPurchaseLinkedTransfers,
+}

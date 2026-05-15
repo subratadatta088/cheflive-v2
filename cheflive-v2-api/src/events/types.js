@@ -10,9 +10,14 @@ const EventTypes = Object.freeze({
   PurchaseEntryCreated: 'PurchaseEntryCreated',
   PurchaseEntryUpdated: 'PurchaseEntryUpdated',
   PurchaseEntryDeleted: 'PurchaseEntryDeleted',
+  
   TransferEntryCreated: 'TransferEntryCreated',
   TransferEntryUpdated: 'TransferEntryUpdated',
   TransferEntryDeleted: 'TransferEntryDeleted',
+
+  UtilizationEntryCreated: 'UtilizationEntryCreated',
+  UtilizationEntryUpdated: 'UtilizationEntryUpdated',
+  UtilizationEntryDeleted: 'UtilizationEntryDeleted',
 
   StockUpdated: 'StockUpdated',
 })

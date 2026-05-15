@@ -20,8 +20,35 @@ async function onTransferCreated(ctx) {
   await stockService.applyTransfer(transfer)
 }
 
-async function onTransferUpdated(_ctx) {}
-async function onTransferDeleted(_ctx) {}
+async function onTransferUpdated(ctx) {
+  const { models, payload } = ctx
+  const previous = payload?.previous
+  const next = payload?.next
+
+  if (!previous || !next) return
+  if (next.deleted_at) return
+
+  const user = {
+    id: payload.actor_user_id ?? null,
+    organization_id: payload.organization_id,
+  }
+
+  const stockService = new StockService({ models, user })
+  await stockService.applyTransferEditAdjustments(previous, next)
+}
+
+async function onTransferDeleted(ctx) {
+  const { models, payload } = ctx
+  const previous = payload?.previous
+  if (!previous || previous.deleted_at) return
+
+  const user = {
+    id: payload.actor_user_id ?? null,
+    organization_id: payload.organization_id,
+  }
+
+  const stockService = new StockService({ models, user })
+  await stockService.revertTransfer(previous)
+}
 
 module.exports = { onTransferCreated, onTransferUpdated, onTransferDeleted }
-

@@ -5,7 +5,7 @@ const {
   PreparationRowSchema,
   PreparationUpdateSchema,
 } = require('../../../models/preparation/schema')
-const { PreparationItemRowSchema } = require('../../../models/preparationItem/schema')
+const { PreparationItemApiRowSchema } = require('../../../models/preparationItem/schema')
 const { openSqlite } = require('../db')
 
 function run(db, sql, params = []) {
@@ -173,7 +173,25 @@ class PreparationSqliteDAL extends PreparationModel {
     const prepId = PreparationIdSchema.parse(id)
     const row = await get(this.db, `SELECT * FROM preparations WHERE id = ?`, [prepId])
     if (!row) return null
-    return normalizePreparationRow(row)
+    const preparation = normalizePreparationRow(row)
+
+    const itemRows = await all(
+      this.db,
+      `SELECT pi.*, i.name AS ingredient_name, i.item_code AS ingredient_item_code
+       FROM preparation_items pi
+       LEFT JOIN ingredients i
+         ON i.id = pi.ingredient_id
+        AND i.organization_id = pi.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE pi.preparation_id = ?
+         AND pi.organization_id = ?
+         AND (pi.deleted_at IS NULL OR pi.deleted_at = '')
+       ORDER BY pi.id ASC`,
+      [prepId, preparation.organization_id]
+    )
+
+    const items = itemRows.map((r) => PreparationItemApiRowSchema.parse(r))
+    return { ...preparation, items }
   }
 
   async getAll() {

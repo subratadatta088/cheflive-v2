@@ -239,7 +239,8 @@ export function DataTable({
         </div>
       </div>
 
-      <div className="w-full overflow-x-auto border-y border-slate-200 bg-white">
+      <div className="w-full border-y border-slate-200 bg-white">
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-left text-sm leading-snug">
           <thead className="bg-slate-50">
             <tr>
@@ -317,6 +318,7 @@ export function DataTable({
             </tfoot>
           ) : null}
         </table>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2">
           <div className="text-sm text-slate-600">

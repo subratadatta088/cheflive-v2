@@ -487,6 +487,12 @@ class IngredientsController {
       unit: ingredient.unit,
       origin: defaultOrigin,
       qty: row ? Number(row.qty) : 0,
+      opening_stock_qty: row?.opening_stock_qty ?? null,
+      opening_stock_unit: row?.opening_stock_unit ?? null,
+      reorder_threshold_qty: row?.reorder_threshold_qty ?? null,
+      reorder_threshold_unit: row?.reorder_threshold_unit ?? null,
+      minimum_reorder_qty: row?.minimum_reorder_qty ?? null,
+      minimum_reorder_unit: row?.minimum_reorder_unit ?? null,
       running_stock: row,
     })
   }
@@ -517,6 +523,12 @@ class IngredientsController {
       origin_id: originId,
       unit: ingredient.unit,
       qty: row ? row.qty : 0,
+      opening_stock_qty: row?.opening_stock_qty ?? null,
+      opening_stock_unit: row?.opening_stock_unit ?? null,
+      reorder_threshold_qty: row?.reorder_threshold_qty ?? null,
+      reorder_threshold_unit: row?.reorder_threshold_unit ?? null,
+      minimum_reorder_qty: row?.minimum_reorder_qty ?? null,
+      minimum_reorder_unit: row?.minimum_reorder_unit ?? null,
       running_stock: row,
     })
   }

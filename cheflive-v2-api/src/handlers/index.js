@@ -6,6 +6,7 @@ const log = require('./logger')
 
 const purchaseHandlers = require('./purchaseHandlers')
 const transferHandlers = require('./transferHandlers')
+const utilizationHandlers = require('./utilizationHandlers')
 const stockHandlers = require('./stockHandlers')
 
 let _registered = false
@@ -28,6 +29,7 @@ function buildModels() {
     getRunningStockModel,
     getStockTransitionStateModel,
     getTransferModel,
+    getUtilizationModel,
   } = require('../drivers/factory')
   return {
     ingredient: getIngredientModel(),
@@ -35,6 +37,7 @@ function buildModels() {
     runningStock: getRunningStockModel(),
     stockTransitionState: getStockTransitionStateModel(),
     transfer: getTransferModel(),
+    utilization: getUtilizationModel(),
   }
 }
 
@@ -123,6 +126,10 @@ async function registerHandlers() {
   bind(EventTypes.TransferEntryCreated, transferHandlers.onTransferCreated)
   bind(EventTypes.TransferEntryUpdated, transferHandlers.onTransferUpdated)
   bind(EventTypes.TransferEntryDeleted, transferHandlers.onTransferDeleted)
+
+  bind(EventTypes.UtilizationEntryCreated, utilizationHandlers.onUtilizationCreated)
+  bind(EventTypes.UtilizationEntryUpdated, utilizationHandlers.onUtilizationUpdated)
+  bind(EventTypes.UtilizationEntryDeleted, utilizationHandlers.onUtilizationDeleted)
 
   bind(EventTypes.StockUpdated, stockHandlers.onStockUpdated)
 

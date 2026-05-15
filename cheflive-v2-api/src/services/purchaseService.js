@@ -42,6 +42,10 @@ class PurchaseService {
     return await this.models.purchase.groupItemsByIngredient(params)
   }
 
+  async getItemsByLowStock(params) {
+    return await this.models.purchase.getItemsByLowStock(params)
+  }
+
   async getById(id) {
     return await this.models.purchase.getById(id)
   }

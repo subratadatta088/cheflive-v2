@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS utilizations (
   qty REAL,
   unit TEXT,
 
+  date TEXT,
   note TEXT,
 
   created_by INTEGER,

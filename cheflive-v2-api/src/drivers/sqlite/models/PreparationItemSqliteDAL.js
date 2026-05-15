@@ -103,11 +103,11 @@ class PreparationItemSqliteDAL extends PreparationItemModel {
     const q = PreparationItemListQuerySchema.parse(query)
     if (!q.organization_id) throw new Error('organization_id is required')
 
-    const where = ['organization_id = ?']
+    const where = ['pi.organization_id = ?', `(pi.deleted_at IS NULL OR pi.deleted_at = '')`]
     const params = [q.organization_id]
 
     if (q.preparation_id) {
-      where.push('preparation_id = ?')
+      where.push('pi.preparation_id = ?')
       params.push(q.preparation_id)
     }
 
@@ -115,14 +115,20 @@ class PreparationItemSqliteDAL extends PreparationItemModel {
 
     const rows = await all(
       this.db,
-      `SELECT * FROM preparation_items
+      `SELECT pi.*, i.name AS ingredient_name, i.item_code AS ingredient_item_code
+       FROM preparation_items pi
+       LEFT JOIN ingredients i
+         ON i.id = pi.ingredient_id
+        AND i.organization_id = pi.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
        WHERE ${where.join(' AND ')}
-       ORDER BY id DESC
+       ORDER BY pi.id ASC
        LIMIT ? OFFSET ?`,
       [...params, q.limit, offset]
     )
 
-    return rows.map(normalizeRow)
+    const { PreparationItemApiRowSchema } = require('../../../models/preparationItem/schema')
+    return rows.map((r) => PreparationItemApiRowSchema.parse(r))
   }
 
   async updateById(id, data) {

@@ -2,7 +2,7 @@ import { api } from './api.js'
 
 /**
  * GET /transfers
- * @param {{ q?: string, page?: number, limit?: number, from_origin_id?: number, to_origin_id?: number }} [query]
+ * @param {{ q?: string, page?: number, limit?: number, from_origin_id?: number, to_origin_id?: number, include_system_entry?: boolean }} [query]
  */
 export async function listTransfers(query = {}) {
   const res = await api.get('transfers', { params: query })
@@ -43,7 +43,8 @@ export async function getTransferById(id) {
  *  from_purchase_id?: number|null,
  *  to_utilisation_id?: number|null,
  *  transfer_date?: string,
- *  note?: string|null
+ *  note?: string|null,
+ *  items?: Array<{ ingredient_id: number, qty: number, unit: string }>
  * }} payload
  */
 export async function updateTransferById(id, payload) {

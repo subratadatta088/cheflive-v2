@@ -8,11 +8,14 @@ import { Button } from '../../components/Button.jsx'
 import { LineItemsGrid } from '../../components/LineItemsGrid.jsx'
 import { AddOriginButton } from '../../components/AddOriginButton.jsx'
 import {
+  getIngredientRunningStockByOrigin,
   getIngredientRunningStockDefault,
   getIngredientsBulkByIds,
   listIngredients,
   listIngredientUnitConversions,
 } from '../../apis/ingredient.js'
+import { applyStockAndReorderToRow, parseDefaultStockParts } from './purchaseLineStockUtils.js'
+import { PurchaseLowStockButton } from './lowStock/PurchaseLowStockButton.jsx'
 import { createPurchase, getPurchaseById, updatePurchaseById } from '../../apis/purchase.js'
 import { MultiSelect } from '../../components/MultiSelect.jsx'
 import { useToast } from '../../components/Toaster.jsx'
@@ -41,15 +44,6 @@ function newRow() {
     defaultStockUnit: '',
     defaultStockLoading: false,
   }
-}
-
-/** @param {unknown} qty @param {unknown} unit @returns {{ qtyStr: string, unitStr: string } | null} */
-function parseDefaultStockParts(qty, unit) {
-  const u = unit === undefined || unit === null ? '' : String(unit).trim()
-  const raw = qty === undefined || qty === null ? NaN : Number(qty)
-  if (!Number.isFinite(raw)) return null
-  const qStr = raw % 1 === 0 ? String(raw) : String(raw)
-  return { qtyStr: qStr, unitStr: u }
 }
 
 /** Local calendar date for `<input type="date" />` (YYYY-MM-DD). */
@@ -543,6 +537,7 @@ function PurchasesPurchaseFormInner({ mode, editId, editBoot }) {
     async (rowId, ingredientId) => {
       const rowKey = String(rowId)
       const ingKey = ingredientId ? String(ingredientId) : ''
+      const originNum = Number(formik.values.originId)
 
       const patchRows = (mapper) => {
         const prev = Array.isArray(rowsRef.current) ? rowsRef.current : []
@@ -567,20 +562,16 @@ function PurchasesPurchaseFormInner({ mode, editId, editBoot }) {
       )
 
       try {
-        const data = await getIngredientRunningStockDefault(ingKey)
-        const parts = parseDefaultStockParts(data?.qty, data?.unit)
+        let data
+        if (Number.isFinite(originNum) && originNum > 0) {
+          data = await getIngredientRunningStockByOrigin(ingKey, originNum)
+        } else {
+          data = await getIngredientRunningStockDefault(ingKey)
+        }
         patchRows((r) => {
           if (String(r.id) !== rowKey) return r
           if (String(r.ingredient_id ?? '') !== ingKey) return r
-          if (!parts) {
-            return { ...r, defaultStockQtyStr: '—', defaultStockUnit: '', defaultStockLoading: false }
-          }
-          return {
-            ...r,
-            defaultStockQtyStr: parts.qtyStr,
-            defaultStockUnit: parts.unitStr,
-            defaultStockLoading: false,
-          }
+          return applyStockAndReorderToRow(r, data)
         })
       } catch (e) {
         console.error('[Default stock load failed]', e)
@@ -591,8 +582,15 @@ function PurchasesPurchaseFormInner({ mode, editId, editBoot }) {
         })
       }
     },
-    [formik.setFieldValue],
+    [formik.setFieldValue, formik.values.originId],
   )
+
+  useEffect(() => {
+    const prev = Array.isArray(rowsRef.current) ? rowsRef.current : formik.values.rows ?? []
+    for (const r of prev) {
+      if (r?.ingredient_id) void loadDefaultStockIntoRow(r.id, r.ingredient_id)
+    }
+  }, [formik.values.originId, loadDefaultStockIntoRow])
 
   function applyUnitPriceForRow(row, nextUnit) {
     const baseUnit = String(row?.baseUnit ?? row?.unit ?? '').trim()
@@ -1075,6 +1073,27 @@ function PurchasesPurchaseFormInner({ mode, editId, editBoot }) {
             className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
           />
         </label>
+      </div>
+
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+        <PurchaseLowStockButton
+          disabled={formik.isSubmitting}
+          setRows={setRows}
+          onRowsAppended={(appended) => {
+            for (const row of appended) {
+              if (row?.ingredient_id) {
+                void loadConversionsIntoRow(row.id, row.ingredient_id)
+                void loadDefaultStockIntoRow(row.id, row.ingredient_id)
+              }
+            }
+          }}
+          onSuccess={(count) => {
+            showToast({ text: `Added ${count} low-stock item(s).`, theme: 'success', duration: 4000 })
+          }}
+          onError={(msg) => {
+            showToast({ text: msg, theme: 'error', duration: 5000 })
+          }}
+        />
       </div>
 
       <div className="space-y-1">

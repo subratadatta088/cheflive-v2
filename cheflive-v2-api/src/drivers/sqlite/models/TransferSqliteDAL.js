@@ -240,9 +240,22 @@ class TransferSqliteDAL extends TransferModel {
     return { ...transfer, items: itemRows.map(normalizeTransferItemApiRow) }
   }
 
-  async list({ organization_id, page, limit, q, from_origin_id, to_origin_id }) {
+  async list({
+    organization_id,
+    page,
+    limit,
+    q,
+    from_origin_id,
+    to_origin_id,
+    include_system_entry = false,
+  }) {
     const where = ['organization_id = ?', `(deleted_at IS NULL OR deleted_at = '')`]
     const params = [organization_id]
+
+    if (!include_system_entry) {
+      where.push('from_origin_id IS NOT NULL')
+      where.push('to_origin_id IS NOT NULL')
+    }
 
     if (q) {
       where.push('note LIKE ?')
@@ -275,6 +288,78 @@ class TransferSqliteDAL extends TransferModel {
 
     const itemRows = await fetchTransferItemsJoined(this.db, organization_id, transferIds)
 
+    const items = itemRows.map(normalizeTransferItemApiRow)
+    const byTransfer = new Map()
+    for (const it of items) {
+      const tid = it.transfer_id
+      if (!tid) continue
+      const arr = byTransfer.get(tid) || []
+      arr.push(it)
+      byTransfer.set(tid, arr)
+    }
+
+    return transfers.map((t) => ({ ...t, items: byTransfer.get(t.id) || [] }))
+  }
+
+  /** Transfers created for a purchase (stock-in + optional follow-up). */
+  async listByPurchaseId({ organization_id, purchase_id }) {
+    const pid = Number(purchase_id)
+    const followUpNote = `Auto transfer after purchase #${pid}`
+
+    const rows = await all(
+      this.db,
+      `SELECT * FROM transfers
+       WHERE organization_id = ?
+         AND (deleted_at IS NULL OR deleted_at = '')
+         AND (
+           from_purchase_id = ?
+           OR note = ?
+         )
+       ORDER BY id ASC`,
+      [organization_id, pid, followUpNote]
+    )
+
+    const transfers = rows.map(normalizeTransferRow)
+    if (!transfers.length) return []
+
+    const transferIds = transfers.map((t) => t.id)
+    const itemRows = await fetchTransferItemsJoined(this.db, organization_id, transferIds)
+    const items = itemRows.map(normalizeTransferItemApiRow)
+    const byTransfer = new Map()
+    for (const it of items) {
+      const tid = it.transfer_id
+      if (!tid) continue
+      const arr = byTransfer.get(tid) || []
+      arr.push(it)
+      byTransfer.set(tid, arr)
+    }
+
+    return transfers.map((t) => ({ ...t, items: byTransfer.get(t.id) || [] }))
+  }
+
+  /** Transfers created for a utilization (stock-out from origin). */
+  async listByUtilisationId({ organization_id, utilisation_id }) {
+    const uid = Number(utilisation_id)
+    const utilNote = `Auto transfer from utilization #${uid}`
+
+    const rows = await all(
+      this.db,
+      `SELECT * FROM transfers
+       WHERE organization_id = ?
+         AND (deleted_at IS NULL OR deleted_at = '')
+         AND (
+           to_utilisation_id = ?
+           OR note = ?
+         )
+       ORDER BY id ASC`,
+      [organization_id, uid, utilNote]
+    )
+
+    const transfers = rows.map(normalizeTransferRow)
+    if (!transfers.length) return []
+
+    const transferIds = transfers.map((t) => t.id)
+    const itemRows = await fetchTransferItemsJoined(this.db, organization_id, transferIds)
     const items = itemRows.map(normalizeTransferItemApiRow)
     const byTransfer = new Map()
     for (const it of items) {
@@ -340,6 +425,21 @@ class TransferSqliteDAL extends TransferModel {
           throw new Error('Utilization organization mismatch')
       }
 
+      if (Array.isArray(payload.items) && payload.items.length) {
+        const ingredientIds = [...new Set(payload.items.map((i) => i.ingredient_id))]
+        const placeholders = ingredientIds.map(() => '?').join(', ')
+        const checkRow = await get(
+          this.db,
+          `SELECT COUNT(*) AS c FROM ingredients
+           WHERE organization_id = ?
+             AND id IN (${placeholders})
+             AND (deleted_at IS NULL OR deleted_at = '')`,
+          [Number(existing.organization_id), ...ingredientIds]
+        )
+        if (Number(checkRow?.c || 0) !== ingredientIds.length)
+          throw new Error('Ingredient organization mismatch')
+      }
+
       const updatedAt = new Date().toISOString()
 
       const fields = []
@@ -376,6 +476,45 @@ class TransferSqliteDAL extends TransferModel {
       params.push(updatedAt)
 
       await run(this.db, `UPDATE transfers SET ${fields.join(', ')} WHERE id = ?`, [...params, tid])
+
+      if (Array.isArray(payload.items)) {
+        const orgId = Number(existing.organization_id)
+        const itemCreatedBy = existing.created_by ?? null
+
+        await run(
+          this.db,
+          `UPDATE transfer_items SET deleted_at = ?, updated_at = ?
+           WHERE transfer_id = ? AND organization_id = ?
+             AND (deleted_at IS NULL OR deleted_at = '')`,
+          [updatedAt, updatedAt, tid, orgId]
+        )
+
+        for (const it of payload.items) {
+          await run(
+            this.db,
+            `INSERT INTO transfer_items (
+               organization_id,
+               transfer_id,
+               ingredient_id,
+               qty,
+               unit,
+               created_by,
+               created_at,
+               updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              orgId,
+              tid,
+              it.ingredient_id,
+              it.qty,
+              it.unit,
+              itemCreatedBy,
+              updatedAt,
+              updatedAt,
+            ]
+          )
+        }
+      }
 
       return await this.getById(tid)
     })

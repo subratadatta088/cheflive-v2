@@ -17,6 +17,7 @@ import { TransfersCreatePage } from './pages/transfers/TransfersCreatePage.jsx'
 import { TransfersEditPage } from './pages/transfers/TransfersEditPage.jsx'
 import { TransfersHistoryPage } from './pages/transfers/TransfersHistoryPage.jsx'
 import { UtilizationsCreatePage } from './pages/utilizations/UtilizationsCreatePage.jsx'
+import { UtilizationsEditPage } from './pages/utilizations/UtilizationsEditPage.jsx'
 import { UtilizationsHistoryPage } from './pages/utilizations/UtilizationsHistoryPage.jsx'
 import { ReportPurchasesPage } from './pages/report/ReportPurchasesPage.jsx'
 import { ReportUsagePage } from './pages/report/ReportUsagePage.jsx'
@@ -67,7 +68,9 @@ function AppShell() {
       ? { title: 'Transfers • Edit', crumbs: ['Transfers', 'Edit'] }
       : /^\/purchases\/\d+\/edit$/.test(location.pathname)
         ? { title: 'Purchases • Edit', crumbs: ['Purchases', 'Edit'] }
-        : { title: 'Cheflive', crumbs: ['Cheflive'] })
+        : /^\/utilizations\/\d+\/edit$/.test(location.pathname)
+          ? { title: 'Utilizations • Edit', crumbs: ['Utilizations', 'Edit'] }
+          : { title: 'Cheflive', crumbs: ['Cheflive'] })
   const { username, logout } = useAuth()
   const isAuthRoute =
     location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/reset-password'
@@ -217,6 +220,14 @@ function AppShell() {
               element={
                 <RequireAuth>
                   <UtilizationsHistoryPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/utilizations/:id/edit"
+              element={
+                <RequireAuth>
+                  <UtilizationsEditPage />
                 </RequireAuth>
               }
             />

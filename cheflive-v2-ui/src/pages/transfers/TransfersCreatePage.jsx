@@ -365,6 +365,17 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
       const toId = Number(values.toOriginId)
 
       if (mode === 'edit') {
+        const items = []
+        for (const r of values.rows) {
+          const ingId = Number(r?.ingredient_id)
+          const qty = parseFloat(String(r?.qty ?? '').replace(',', '.'))
+          if (!Number.isFinite(ingId) || ingId <= 0) continue
+          if (!Number.isFinite(qty) || qty <= 0) continue
+          const unit = String(r?.unit ?? '').trim()
+          if (!unit) continue
+          items.push({ ingredient_id: ingId, qty, unit })
+        }
+
         helpers.setSubmitting(true)
         try {
           const note = String(values.notes ?? '').trim()
@@ -373,6 +384,7 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
             to_origin_id: toId,
             transfer_date: values.transferDate,
             note: note === '' ? null : note,
+            items,
           })
           showToast({ text: 'Transfer updated.', theme: 'success', duration: 4000 })
           navigate('/transfers/history')
@@ -651,8 +663,6 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
     }
   }, [ingredientSearch])
 
-  const lineReadOnly = mode === 'edit'
-
   const currentStockHeaderOrigin = useMemo(() => {
     const fromStr = String(formik.values.fromOriginId ?? '').trim()
     const fromNum = fromStr ? Number(fromStr) : NaN
@@ -677,10 +687,8 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
           const value = row?.item_code === undefined || row?.item_code === null ? '' : String(row.item_code)
           return (
             <input
-              readOnly={lineReadOnly}
               value={value}
               onChange={(e) => {
-                if (lineReadOnly) return
                 const next = String(e.target.value ?? '').replace(/[^\d]/g, '')
                 updateCell('item_code', next)
 
@@ -711,12 +719,7 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
               inputMode="numeric"
               autoComplete="off"
               placeholder="Scan/enter"
-              className={
-                'box-border h-9 w-full min-w-[72px] border-0 px-2 py-1 text-sm tabular-nums outline-none placeholder:text-slate-400 ' +
-                (lineReadOnly
-                  ? 'cursor-default bg-slate-50/80 text-slate-600'
-                  : 'bg-transparent text-slate-900 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300')
-              }
+              className="box-border h-9 w-full min-w-[72px] border-0 bg-transparent px-2 py-1 text-sm tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
             />
           )
         },
@@ -743,14 +746,12 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
             <div className="h-9 w-full">
               <MultiSelect
                 bare
-                isDisabled={lineReadOnly}
                 options={optionsForRow}
                 value={selected}
                 placeholder="Select item…"
                 isMulti={false}
                 onSearchChange={(q) => setIngredientSearch(q)}
                 onChange={(next) => {
-                  if (lineReadOnly) return
                   const picked = next ? String(next) : ''
                   updateCell('ingredient_id', picked)
 
@@ -798,7 +799,6 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
           if (opts.length > 0) {
             return (
               <select
-                disabled={lineReadOnly}
                 value={val}
                 onChange={(e) => updateCell('unit', e.target.value)}
                 className="box-border h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-900 outline-none disabled:cursor-default disabled:bg-slate-50/80 disabled:text-slate-600 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
@@ -813,19 +813,10 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
           }
           return (
             <input
-              readOnly={lineReadOnly}
               value={val}
-              onChange={(e) => {
-                if (lineReadOnly) return
-                updateCell('unit', e.target.value)
-              }}
+              onChange={(e) => updateCell('unit', e.target.value)}
               placeholder="Unit"
-              className={
-                'box-border h-9 w-full border-0 px-2 py-1 text-sm outline-none placeholder:text-slate-400 ' +
-                (lineReadOnly
-                  ? 'cursor-default bg-slate-50/80 text-slate-600'
-                  : 'bg-transparent text-slate-900 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300')
-              }
+              className="box-border h-9 w-full border-0 bg-transparent px-2 py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-slate-300"
             />
           )
         },
@@ -889,7 +880,6 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
       ingredientsByItemCode,
       loadConversionsIntoRow,
       loadDefaultStockIntoRow,
-      lineReadOnly,
     ],
   )
 
@@ -1030,12 +1020,6 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
           </label>
         </div>
 
-        {mode === 'edit' ? (
-          <p className="text-xs text-slate-600">
-            Line items are shown for reference; only date, origins, and notes are saved on update.
-          </p>
-        ) : null}
-
         <div className="space-y-1">
           <LineItemsGrid
             rows={formik.values.rows}
@@ -1045,7 +1029,7 @@ function TransfersTransferFormInner({ mode, editId, editBoot }) {
             }}
             createRow={newRow}
             columns={transferColumns}
-            showRowActions={!lineReadOnly}
+            showRowActions
           />
           {formik.errors.items ? (
             <p className="text-xs text-red-600" role="alert">

@@ -113,6 +113,21 @@ class PurchasesController {
    * endpoints (ingredient_id, ingredient_name, qty, unit, unit_price), with qty/unit_price
    * normalized to each ingredient's default unit.
    */
+  getItemsByLowStock = async (req, res) => {
+    let organization_id
+    if (isSuperAdmin(req)) {
+      organization_id = Number(req.query?.organization_id)
+      if (!Number.isFinite(organization_id) || organization_id <= 0)
+        return res.status(400).json({ error: 'organization_id is required' })
+    } else {
+      organization_id = req.user.organization_id
+    }
+
+    const service = new PurchaseService({ models: req.models, user: req.user })
+    const result = await service.getItemsByLowStock({ organization_id })
+    return res.json(result)
+  }
+
   groupItemsByIngredient = async (req, res) => {
     const parsed = PurchaseGroupItemsBodySchema.safeParse(req.body ?? {})
     if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' })

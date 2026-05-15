@@ -16,6 +16,8 @@ import { CategoriesProvider, useCategories } from '../../../context/CategoriesCo
 import { MultiSelect } from '../../../components/MultiSelect.jsx'
 import { Switch } from '../../../components/Switch.jsx'
 import { IngredientUnitConversionsModal } from '../../../components/IngredientUnitConversionsModal.jsx'
+import { RunningStockConfigModal } from '../../../components/RunningStockConfigModal.jsx'
+import { TableRowActionsMenu } from '../../../components/TableRowActionsMenu.jsx'
 
 function csvEscape(cell) {
   const s = cell === null || cell === undefined ? '' : String(cell)
@@ -90,6 +92,7 @@ function InventoryIngredientsInnerPage() {
   const [exportingCsv, setExportingCsv] = useState(false)
   const [activeSavingIds, setActiveSavingIds] = useState(() => /** @type {number[]} */ ([]))
   const [conversionsIngredient, setConversionsIngredient] = useState(null)
+  const [stockConfigIngredient, setStockConfigIngredient] = useState(null)
 
   const columns = useMemo(
     () => [
@@ -179,69 +182,73 @@ function InventoryIngredientsInnerPage() {
       render: (r) => {
         const open = openMenuForId === r.id
         return (
-          <div className="relative inline-block text-left">
+          <TableRowActionsMenu
+            open={open}
+            onOpenChange={(next) => setOpenMenuForId(next ? r.id : null)}
+            menuClassName="w-40"
+          >
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpenMenuForId((cur) => (cur === r.id ? null : r.id))
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setOpenMenuForId(null)
+                setEditRow(r)
+                setEditForm({
+                  item_code: r?.item_code === null || r?.item_code === undefined ? '' : String(r.item_code),
+                  name: String(r?.name ?? ''),
+                  unit: String(r?.unit ?? ''),
+                  base_price: r?.base_price === null || r?.base_price === undefined ? '' : String(r.base_price),
+                })
               }}
-              aria-label="Row actions"
             >
-              ⋮
+              Edit
             </button>
-            {open ? (
-              <div
-                className="absolute right-0 z-20 mt-1 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                  onClick={() => {
-                    setOpenMenuForId(null)
-                    setEditRow(r)
-                    setEditForm({
-                      item_code: r?.item_code === null || r?.item_code === undefined ? '' : String(r.item_code),
-                      name: String(r?.name ?? ''),
-                      unit: String(r?.unit ?? ''),
-                      base_price: r?.base_price === null || r?.base_price === undefined ? '' : String(r.base_price),
-                    })
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                  onClick={() => {
-                    setOpenMenuForId(null)
-                    setConversionsIngredient({
-                      id: Number(r.id),
-                      name: String(r?.name ?? ''),
-                      category_name: String(r?.category_name ?? ''),
-                      unit: String(r?.unit ?? ''),
-                      base_price: r?.base_price === null || r?.base_price === undefined ? null : Number(r.base_price),
-                      item_code: r?.item_code === null || r?.item_code === undefined ? null : Number(r.item_code),
-                    })
-                  }}
-                >
-                  Update conversions
-                </button>
-                <button
-                  type="button"
-                  className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
-                  onClick={() => {
-                    setOpenMenuForId(null)
-                    setDeleteRow(r)
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            ) : null}
-          </div>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setOpenMenuForId(null)
+                setConversionsIngredient({
+                  id: Number(r.id),
+                  name: String(r?.name ?? ''),
+                  category_name: String(r?.category_name ?? ''),
+                  unit: String(r?.unit ?? ''),
+                  base_price: r?.base_price === null || r?.base_price === undefined ? null : Number(r.base_price),
+                  item_code: r?.item_code === null || r?.item_code === undefined ? null : Number(r.item_code),
+                })
+              }}
+            >
+              Update conversions
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setOpenMenuForId(null)
+                setStockConfigIngredient({
+                  id: Number(r.id),
+                  name: String(r?.name ?? ''),
+                  unit: String(r?.unit ?? ''),
+                })
+              }}
+            >
+              Stock settings
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+              onClick={() => {
+                setOpenMenuForId(null)
+                setDeleteRow(r)
+              }}
+            >
+              Delete
+            </button>
+          </TableRowActionsMenu>
         )
       },
     },
@@ -296,18 +303,6 @@ function InventoryIngredientsInnerPage() {
   useEffect(() => {
     if (selectedRowIds.length === 0 && bulkDeleteOpen) setBulkDeleteOpen(false)
   }, [selectedRowIds.length, bulkDeleteOpen])
-
-  useEffect(() => {
-    const close = () => setOpenMenuForId(null)
-    window.addEventListener('mousedown', close)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
-    return () => {
-      window.removeEventListener('mousedown', close)
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
-    }
-  }, [])
 
   async function exportIngredientsCsv() {
     setError('')
@@ -440,6 +435,12 @@ function InventoryIngredientsInnerPage() {
         open={Boolean(conversionsIngredient)}
         ingredient={conversionsIngredient}
         onClose={() => setConversionsIngredient(null)}
+      />
+
+      <RunningStockConfigModal
+        open={Boolean(stockConfigIngredient)}
+        ingredient={stockConfigIngredient}
+        onClose={() => setStockConfigIngredient(null)}
       />
 
       {/* Edit modal (simple) */}

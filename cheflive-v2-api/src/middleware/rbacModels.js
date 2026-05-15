@@ -11,6 +11,8 @@ const {
   getStockTransitionStateModel,
   getTransferItemModel,
   getTransferModel,
+  getUtilizationItemModel,
+  getUtilizationModel,
   getUnitConversionModel,
   getUserModel,
 } = require('../drivers/factory')
@@ -37,6 +39,8 @@ function withScopedModels(req, res, next) {
   const purchaseItemDal = getPurchaseItemModel()
   const transferDal = getTransferModel()
   const transferItemDal = getTransferItemModel()
+  const utilizationDal = getUtilizationModel()
+  const utilizationItemDal = getUtilizationItemModel()
   const runningStockDal = getRunningStockModel()
   const stockTransitionStateDal = getStockTransitionStateModel()
 
@@ -53,6 +57,8 @@ function withScopedModels(req, res, next) {
       purchaseItem: purchaseItemDal,
       transfer: transferDal,
       transferItem: transferItemDal,
+      utilization: utilizationDal,
+      utilizationItem: utilizationItemDal,
       runningStock: runningStockDal,
       stockTransitionState: stockTransitionStateDal,
     }
@@ -335,6 +341,11 @@ function withScopedModels(req, res, next) {
             purchase_ids,
           })
         },
+        getItemsByLowStock: async () => {
+          return await purchaseDal.getItemsByLowStock({
+            organization_id: req.user.organization_id,
+          })
+        },
         updateById: async (id, data) => {
           const existing = await purchaseDal.getById(id)
           if (!existing) return null
@@ -436,6 +447,62 @@ function withScopedModels(req, res, next) {
           return await transferItemDal.deleteById(id)
         },
       },
+      utilization: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await utilizationDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await utilizationDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await utilizationDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await utilizationDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          if (data?.organization_id !== undefined && data.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await utilizationDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await utilizationDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await utilizationDal.deleteById(id)
+        },
+      },
+      utilizationItem: {
+        create: async (data) => {
+          if (data?.organization_id !== req.user.organization_id) return forbidden(res)
+          return await utilizationItemDal.create(data)
+        },
+        getById: async (id) => {
+          const row = await utilizationItemDal.getById(id)
+          if (!row) return null
+          if (row.organization_id !== req.user.organization_id) return forbidden(res)
+          return row
+        },
+        list: async (query) => {
+          return await utilizationItemDal.list({ ...query, organization_id: req.user.organization_id })
+        },
+        updateById: async (id, data) => {
+          const existing = await utilizationItemDal.getById(id)
+          if (!existing) return null
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await utilizationItemDal.updateById(id, data)
+        },
+        deleteById: async (id) => {
+          const existing = await utilizationItemDal.getById(id)
+          if (!existing) return false
+          if (existing.organization_id !== req.user.organization_id) return forbidden(res)
+          return await utilizationItemDal.deleteById(id)
+        },
+      },
       runningStock: {
         getById: async (id) => {
           const row = await runningStockDal.getById(id)
@@ -446,6 +513,21 @@ function withScopedModels(req, res, next) {
         list: async (query) => {
           return await runningStockDal.list({
             ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+        getConfiguration: async (query) => {
+          const row = await runningStockDal.getConfiguration({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+          return row
+        },
+        upsertConfiguration: async (payload) => {
+          if (payload?.organization_id !== undefined && payload.organization_id !== req.user.organization_id)
+            return forbidden(res)
+          return await runningStockDal.upsertConfiguration({
+            ...payload,
             organization_id: req.user.organization_id,
           })
         },
@@ -612,6 +694,11 @@ function withScopedModels(req, res, next) {
           purchase_ids,
         })
       },
+      getItemsByLowStock: async () => {
+        return await purchaseDal.getItemsByLowStock({
+          organization_id: req.user.organization_id,
+        })
+      },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),
     },
@@ -660,6 +747,34 @@ function withScopedModels(req, res, next) {
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),
     },
+    utilization: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await utilizationDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await utilizationDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
+    utilizationItem: {
+      create: async () => forbidden(res),
+      getById: async (id) => {
+        const row = await utilizationItemDal.getById(id)
+        if (!row) return null
+        if (row.organization_id !== req.user.organization_id) return forbidden(res)
+        return row
+      },
+      list: async (query) => {
+        return await utilizationItemDal.list({ ...query, organization_id: req.user.organization_id })
+      },
+      updateById: async () => forbidden(res),
+      deleteById: async () => forbidden(res),
+    },
     runningStock: {
       getById: async (id) => {
         const row = await runningStockDal.getById(id)
@@ -670,6 +785,21 @@ function withScopedModels(req, res, next) {
       list: async (query) => {
         return await runningStockDal.list({
           ...query,
+          organization_id: req.user.organization_id,
+        })
+      },
+      getConfiguration: async (query) => {
+        const row = await runningStockDal.getConfiguration({
+          ...query,
+          organization_id: req.user.organization_id,
+        })
+        return row
+      },
+      upsertConfiguration: async (payload) => {
+        if (payload?.organization_id !== undefined && payload.organization_id !== req.user.organization_id)
+          return forbidden(res)
+        return await runningStockDal.upsertConfiguration({
+          ...payload,
           organization_id: req.user.organization_id,
         })
       },

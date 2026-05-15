@@ -80,6 +80,13 @@ export async function deletePurchaseById(id) {
  *   subtotal: number,
  * }>}
  */
+/** GET /purchases/low-stock-items */
+export async function getPurchaseLowStockItems() {
+  const res = await api.get('purchases/low-stock-items')
+  const data = res.data ?? {}
+  return { items: Array.isArray(data?.items) ? data.items : [] }
+}
+
 export async function getGroupedPurchaseItems(payload) {
   const idsRaw = Array.isArray(payload?.ids) ? payload.ids : []
   const ids = [...new Set(idsRaw.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))]

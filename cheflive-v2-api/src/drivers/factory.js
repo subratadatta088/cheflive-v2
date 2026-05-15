@@ -145,6 +145,28 @@ function getTransferItemModel() {
   throw new Error(`Unsupported DB_DRIVER: ${driver}`)
 }
 
+function getUtilizationModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { UtilizationSqliteDAL } = require('./sqlite/models/UtilizationSqliteDAL')
+    return new UtilizationSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
+function getUtilizationItemModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { UtilizationItemSqliteDAL } = require('./sqlite/models/UtilizationItemSqliteDAL')
+    return new UtilizationItemSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
 function getRunningStockModel() {
   const driver = readDbDriver()
 
@@ -183,6 +205,8 @@ module.exports = {
   getPurchaseItemModel,
   getTransferModel,
   getTransferItemModel,
+  getUtilizationModel,
+  getUtilizationItemModel,
   getRunningStockModel,
   getStockTransitionStateModel,
 }

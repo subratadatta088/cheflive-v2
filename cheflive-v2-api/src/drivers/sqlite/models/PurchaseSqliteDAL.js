@@ -472,6 +472,79 @@ class PurchaseSqliteDAL extends PurchaseModel {
     }
   }
 
+  /**
+   * Ingredients at the default origin where current stock is below reorder threshold.
+   * Returns purchase-line-ready rows in a single query.
+   *
+   * @param {{ organization_id: number }} params
+   */
+  async getItemsByLowStock({ organization_id }) {
+    const org = Number(organization_id)
+    if (!Number.isFinite(org) || org <= 0) throw new Error('Invalid organization_id')
+
+    const rows = await all(
+      this.db,
+      `SELECT rs.ingredient_id,
+              rs.qty AS current_stock_qty,
+              rs.reorder_threshold_qty,
+              rs.minimum_reorder_qty,
+              i.name AS ingredient_name,
+              i.item_code,
+              i.unit,
+              i.base_price
+       FROM running_stock rs
+       INNER JOIN origins o
+         ON o.id = rs.origin_id
+        AND o.organization_id = rs.organization_id
+        AND o.is_default = 1
+        AND (o.deleted_at IS NULL OR o.deleted_at = '')
+       INNER JOIN ingredients i
+         ON i.id = rs.ingredient_id
+        AND i.organization_id = rs.organization_id
+        AND (i.deleted_at IS NULL OR i.deleted_at = '')
+       WHERE rs.organization_id = ?
+         AND (rs.deleted_at IS NULL OR rs.deleted_at = '')
+         AND rs.reorder_threshold_qty IS NOT NULL
+         AND rs.qty < rs.reorder_threshold_qty
+       ORDER BY i.name COLLATE NOCASE ASC`,
+      [org]
+    )
+
+    const items = rows.map((r) => {
+      const current = Number(r.current_stock_qty) || 0
+      const threshold = Number(r.reorder_threshold_qty)
+      const minReorder = r.minimum_reorder_qty != null ? Number(r.minimum_reorder_qty) : null
+      const unit = String(r.unit || '').trim()
+
+      // Suggested purchase qty: prefer configured minimum reorder; else gap to threshold.
+      let qty
+      if (minReorder != null && Number.isFinite(minReorder) && minReorder > 0) {
+        qty = minReorder
+      } else if (Number.isFinite(threshold) && threshold > current) {
+        qty = threshold - current
+      } else {
+        qty = threshold
+      }
+
+      const basePrice = r.base_price != null ? Number(r.base_price) : null
+
+      return {
+        ingredient_id: Number(r.ingredient_id),
+        ingredient_name: r.ingredient_name ?? null,
+        item_code: r.item_code ?? null,
+        unit,
+        base_price: Number.isFinite(basePrice) ? basePrice : null,
+        current_stock_qty: current,
+        reorder_threshold_qty: threshold,
+        minimum_reorder_qty: minReorder,
+        qty,
+        unit_price: Number.isFinite(basePrice) ? basePrice : null,
+      }
+    })
+
+    return { items }
+  }
+
   async updateById(id, data) {
     const pid = PurchaseIdSchema.parse(id)
     const payload = PurchaseUpdateSchema.parse(data)

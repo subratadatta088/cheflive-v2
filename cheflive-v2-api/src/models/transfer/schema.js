@@ -27,6 +27,7 @@ const TransferUpdateSchema = z.object({
   to_utilisation_id: z.number().int().positive().optional().nullable(),
   transfer_date: z.string().min(1).optional(),
   note: z.string().nullable().optional(),
+  items: z.array(TransferItemNestedCreateSchema).optional(),
 })
 
 const TransferRowSchema = z.object({
@@ -52,6 +53,12 @@ const TransferListQuerySchema = z.object({
   from_origin_id: z.coerce.number().int().positive().optional(),
   to_origin_id: z.coerce.number().int().positive().optional(),
   organization_id: z.coerce.number().int().positive().optional(),
+  /** When false (default), hide purchase/utilization-linked system transfers (require both origins). */
+  include_system_entry: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => v === true || v === 'true' || v === '1')
+    .default(false),
 })
 
 module.exports = {

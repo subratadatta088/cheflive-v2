@@ -165,6 +165,152 @@ class RunningStockSqliteDAL extends RunningStockModel {
       return { qty_before, qty_after, unit, running_stock_id }
     })
   }
+
+  /**
+   * Load configuration fields for an ingredient–origin pair.
+   * @param {{ organization_id: number, origin_id: number, ingredient_id: number }} params
+   */
+  async getConfiguration(params) {
+    const organization_id = Number(params.organization_id)
+    const origin_id = Number(params.origin_id)
+    const ingredient_id = Number(params.ingredient_id)
+
+    if (!Number.isFinite(organization_id) || organization_id <= 0) throw new Error('organization_id is required')
+    if (!Number.isFinite(origin_id) || origin_id <= 0) throw new Error('origin_id is required')
+    if (!Number.isFinite(ingredient_id) || ingredient_id <= 0) throw new Error('ingredient_id is required')
+
+    const row = await get(
+      this.db,
+      `SELECT * FROM running_stock
+       WHERE organization_id = ? AND origin_id = ? AND ingredient_id = ?
+         AND (deleted_at IS NULL OR deleted_at = '')`,
+      [organization_id, origin_id, ingredient_id]
+    )
+    if (!row) return null
+    return normalizeRow(row)
+  }
+
+  /**
+   * Upsert stock configuration (opening stock, thresholds). Does not change live qty on update.
+   * Unit fields are always set from ingredients.unit.
+   *
+   * @param {{
+   *   organization_id: number,
+   *   origin_id: number,
+   *   ingredient_id: number,
+   *   opening_stock_qty?: number|null,
+   *   reorder_threshold_qty?: number|null,
+   *   minimum_reorder_qty?: number|null,
+   *   created_by?: number|null,
+   *   updated_by?: number|null,
+   * }} params
+   */
+  async upsertConfiguration(params) {
+    const organization_id = Number(params.organization_id)
+    const origin_id = Number(params.origin_id)
+    const ingredient_id = Number(params.ingredient_id)
+    const created_by = params.created_by ?? null
+    const updated_by = params.updated_by ?? null
+
+    if (!Number.isFinite(organization_id) || organization_id <= 0) throw new Error('organization_id is required')
+    if (!Number.isFinite(origin_id) || origin_id <= 0) throw new Error('origin_id is required')
+    if (!Number.isFinite(ingredient_id) || ingredient_id <= 0) throw new Error('ingredient_id is required')
+
+    const opening_stock_qty =
+      params.opening_stock_qty === undefined ? undefined : params.opening_stock_qty
+    const reorder_threshold_qty =
+      params.reorder_threshold_qty === undefined ? undefined : params.reorder_threshold_qty
+    const minimum_reorder_qty =
+      params.minimum_reorder_qty === undefined ? undefined : params.minimum_reorder_qty
+
+    return await withTransaction(this.db, async () => {
+      const ingRow = await get(
+        this.db,
+        `SELECT unit FROM ingredients WHERE id = ? AND organization_id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+        [ingredient_id, organization_id]
+      )
+      if (!ingRow) throw new Error('Ingredient not found')
+      const systemUnit = String(ingRow.unit || '').trim()
+      if (!systemUnit) throw new Error('Ingredient default unit is missing')
+
+      const originRow = await get(
+        this.db,
+        `SELECT id FROM origins WHERE id = ? AND organization_id = ? AND (deleted_at IS NULL OR deleted_at = '')`,
+        [origin_id, organization_id]
+      )
+      if (!originRow) throw new Error('Origin not found')
+
+      const existing = await get(
+        this.db,
+        `SELECT id, qty FROM running_stock WHERE organization_id = ? AND origin_id = ? AND ingredient_id = ?`,
+        [organization_id, origin_id, ingredient_id]
+      )
+
+      const now = new Date().toISOString()
+
+      if (existing) {
+        const sets = [
+          'opening_stock_unit = ?',
+          'reorder_threshold_unit = ?',
+          'minimum_reorder_unit = ?',
+          'updated_at = ?',
+          'deleted_at = NULL',
+        ]
+        const vals = [systemUnit, systemUnit, systemUnit, now]
+
+        if (opening_stock_qty !== undefined) {
+          sets.push('opening_stock_qty = ?')
+          vals.push(opening_stock_qty)
+        }
+        if (reorder_threshold_qty !== undefined) {
+          sets.push('reorder_threshold_qty = ?')
+          vals.push(reorder_threshold_qty)
+        }
+        if (minimum_reorder_qty !== undefined) {
+          sets.push('minimum_reorder_qty = ?')
+          vals.push(minimum_reorder_qty)
+        }
+        if (updated_by !== undefined && updated_by !== null) {
+          sets.push('updated_by = ?')
+          vals.push(updated_by)
+        }
+
+        vals.push(existing.id)
+        await run(this.db, `UPDATE running_stock SET ${sets.join(', ')} WHERE id = ?`, vals)
+        const row = await get(this.db, `SELECT * FROM running_stock WHERE id = ?`, [existing.id])
+        return normalizeRow(row)
+      }
+
+      const ins = await run(
+        this.db,
+        `INSERT INTO running_stock (
+          organization_id, origin_id, ingredient_id, qty, unit,
+          opening_stock_qty, opening_stock_unit,
+          reorder_threshold_qty, reorder_threshold_unit,
+          minimum_reorder_qty, minimum_reorder_unit,
+          created_by, updated_by, created_at, updated_at
+        ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          organization_id,
+          origin_id,
+          ingredient_id,
+          systemUnit,
+          opening_stock_qty ?? null,
+          systemUnit,
+          reorder_threshold_qty ?? null,
+          systemUnit,
+          minimum_reorder_qty ?? null,
+          systemUnit,
+          created_by,
+          updated_by,
+          now,
+          now,
+        ]
+      )
+      const row = await get(this.db, `SELECT * FROM running_stock WHERE id = ?`, [ins.lastID])
+      return normalizeRow(row)
+    })
+  }
 }
 
 module.exports = { RunningStockSqliteDAL }
