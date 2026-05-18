@@ -49,14 +49,22 @@ export function PreparationFormFields({ values, errors = {}, disabled = false, o
       </label>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium text-slate-900">Unit</span>
+        <span className="text-sm font-medium text-slate-900">
+          Unit <span className="font-normal text-slate-500">(per 1)</span>
+        </span>
         <input
           value={values.unit}
           disabled={disabled}
           onChange={(e) => onChange('unit', e.target.value)}
           placeholder="kg"
-          className={fieldClass(false)}
+          aria-invalid={Boolean(errors.unit)}
+          className={fieldClass(Boolean(errors.unit))}
         />
+        {errors.unit ? (
+          <p className="text-xs text-red-600" role="alert">
+            {errors.unit}
+          </p>
+        ) : null}
       </label>
 
       <label className="space-y-1 sm:col-span-2">

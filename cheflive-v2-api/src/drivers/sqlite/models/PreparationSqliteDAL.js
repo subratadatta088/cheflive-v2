@@ -130,14 +130,13 @@ class PreparationSqliteDAL extends PreparationModel {
 
       const result = await run(
         this.db,
-        `INSERT INTO preparations (organization_id, name, type, qty, unit, tags, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO preparations (organization_id, name, type, unit, tags, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           payload.organization_id,
           payload.name,
           payload.type ?? null,
-          payload.qty ?? null,
-          payload.unit ?? null,
+          payload.unit,
           tagsJson,
           isActiveInt,
           now,
@@ -343,10 +342,6 @@ class PreparationSqliteDAL extends PreparationModel {
       if (payload.type !== undefined) {
         fields.push('type = ?')
         params.push(payload.type)
-      }
-      if (payload.qty !== undefined) {
-        fields.push('qty = ?')
-        params.push(payload.qty)
       }
       if (payload.unit !== undefined) {
         fields.push('unit = ?')

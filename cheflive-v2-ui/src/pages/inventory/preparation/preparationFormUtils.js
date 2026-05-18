@@ -150,6 +150,7 @@ export function validatePreparationForm(form) {
   /** @type {Record<string, string>} */
   const errors = {}
   if (!String(form?.name ?? '').trim()) errors.name = 'Name is required.'
+  if (!String(form?.unit ?? '').trim()) errors.unit = 'Unit is required (amounts are per 1 unit).'
   const items = rowsToApiItems(form?.rows)
   if (!items.length) errors.items = 'Add at least one ingredient line.'
   return errors

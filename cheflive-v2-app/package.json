@@ -6,7 +6,9 @@
   "main": "main.cjs",
   "scripts": {
     "dev": "concurrently -k -n UI,APP -c cyan,green \"npm:dev:ui\" \"npm:dev:electron\"",
+    "all": "concurrently -k -n UI,API,APP -c cyan,yellow,green \"npm:dev:ui\" \"npm:dev:api\" \"npm:dev:electron\"",
     "dev:ui": "npm --prefix ../cheflive-v2-ui run dev -- --strictPort --port 5173",
+    "dev:api": "npm --prefix ../cheflive-v2-api run dev",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "build:ui": "npm --prefix ../cheflive-v2-ui run build",
     "start": "electron ."

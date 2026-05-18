@@ -61,6 +61,55 @@ function fmtQty(q) {
   return raw % 1 === 0 ? String(raw) : String(raw)
 }
 
+/** @param {unknown} raw */
+export function parseQtyInput(raw) {
+  const s = String(raw ?? '').trim()
+  if (!s) return NaN
+  return parseFloat(s.replace(',', '.'))
+}
+
+/** @param {number} n */
+export function formatQtyNumber(n) {
+  if (!Number.isFinite(n)) return ''
+  return n % 1 === 0 ? String(n) : String(n)
+}
+
+/**
+ * Scale ingredient line qtys by factor (preparation batch multiplier).
+ * @param {unknown[]} rows
+ * @param {number} factor
+ */
+export function scaleUtilizationRows(rows, factor) {
+  if (!Number.isFinite(factor) || factor <= 0) return rows
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const ingId = Number(row?.ingredient_id)
+    if (!Number.isFinite(ingId) || ingId <= 0) return row
+    const prevQty = parseQtyInput(row?.qty)
+    if (!Number.isFinite(prevQty) || prevQty <= 0) return row
+    return { ...row, qty: formatQtyNumber(prevQty * factor) }
+  })
+}
+
+/**
+ * When preparation header qty changes, scale line items by newQty / prevQty.
+ * @param {{ manualMode?: boolean, preparationId?: string, headerQty?: string, rows?: unknown[] }} record
+ * @param {string} newHeaderQtyStr
+ */
+export function applyHeaderQtyChange(record, newHeaderQtyStr) {
+  const patch = { headerQty: newHeaderQtyStr }
+  if (record?.manualMode || !String(record?.preparationId ?? '').trim()) return patch
+
+  const prevHeader = parseQtyInput(record?.headerQty)
+  const nextHeader = parseQtyInput(newHeaderQtyStr)
+  if (!Number.isFinite(prevHeader) || prevHeader <= 0) return patch
+  if (!Number.isFinite(nextHeader) || nextHeader <= 0) return patch
+  if (prevHeader === nextHeader) return patch
+
+  const factor = nextHeader / prevHeader
+  patch.rows = scaleUtilizationRows(record?.rows, factor)
+  return patch
+}
+
 /**
  * @param {Array<{ ingredient_id?: unknown, qty?: unknown, unit?: unknown, ingredient_name?: unknown, ingredient_item_code?: unknown }>} prepItems
  */
@@ -153,13 +202,16 @@ export async function loadPreparationForRecord(preparationId) {
   const prepItems = Array.isArray(prep?.items) ? prep.items : []
   const preparationLabel = prep?.name != null ? String(prep.name) : ''
 
+  const templateUnit =
+    prep?.unit != null && String(prep.unit).trim() !== '' ? String(prep.unit).trim() : ''
+
   if (!prepItems.length) {
     return {
       manualMode: true,
       rows: [newRow()],
       preparationLabel,
-      headerQty: prep?.qty != null ? fmtQty(prep.qty) : '',
-      headerUnit: prep?.unit != null ? String(prep.unit) : '',
+      headerQty: '1',
+      headerUnit: templateUnit,
     }
   }
 
@@ -168,8 +220,8 @@ export async function loadPreparationForRecord(preparationId) {
     manualMode: false,
     rows,
     preparationLabel,
-    headerQty: prep?.qty != null ? fmtQty(prep.qty) : '',
-    headerUnit: prep?.unit != null ? String(prep.unit) : '',
+    headerQty: '1',
+    headerUnit: templateUnit,
   }
 }
 

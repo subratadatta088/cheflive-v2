@@ -31,6 +31,10 @@ function buildAppMenu(mainWindow) {
           click: () => mainWindow.webContents.send('app:navigate', { path: '/inventory/ingredients' }),
         },
         {
+          label: 'Stock',
+          click: () => mainWindow.webContents.send('app:navigate', { path: '/inventory/stock' }),
+        },
+        {
           label: 'Preparations',
           click: () => mainWindow.webContents.send('app:navigate', { path: '/inventory/preparations' }),
         },

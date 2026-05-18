@@ -1,7 +1,8 @@
+import { useCallback } from 'react'
 import { Trash2 } from 'lucide-react'
 import { LineItemsGrid } from '../../components/LineItemsGrid.jsx'
 import { MultiSelect } from '../../components/MultiSelect.jsx'
-import { newRow } from './utilizationFormUtils.js'
+import { applyHeaderQtyChange, newRow } from './utilizationFormUtils.js'
 
 function fieldClass(hasError) {
   return (
@@ -33,6 +34,8 @@ function fieldClass(hasError) {
  *   showRemove: boolean,
  *   onRemove: () => void,
  *   onFieldChange: (field: string, value: string) => void,
+ *   onRecordPatch?: (patch: Record<string, unknown>) => void,
+ *   scaleLineItemsOnHeaderQty?: boolean,
  *   onRowsChange: import('react').Dispatch<import('react').SetStateAction<unknown[]>>,
  * }} props
  */
@@ -48,8 +51,27 @@ export function UtilizationRecordCard({
   showRemove,
   onRemove,
   onFieldChange,
+  onRecordPatch,
+  scaleLineItemsOnHeaderQty = true,
   onRowsChange,
 }) {
+  const handleHeaderQtyChange = useCallback(
+    (nextRaw) => {
+      const value = String(nextRaw ?? '')
+      if (
+        scaleLineItemsOnHeaderQty &&
+        onRecordPatch &&
+        !record.manualMode &&
+        String(record.preparationId ?? '').trim()
+      ) {
+        onRecordPatch(applyHeaderQtyChange(record, value))
+        return
+      }
+      onFieldChange('headerQty', value)
+    },
+    [record, scaleLineItemsOnHeaderQty, onRecordPatch, onFieldChange],
+  )
+
   const selectedPrep = record.preparationId ? String(record.preparationId) : ''
   let prepOptions = preparationOptions
   if (
@@ -86,7 +108,7 @@ export function UtilizationRecordCard({
               type="text"
               inputMode="decimal"
               value={record.headerQty}
-              onChange={(e) => onFieldChange('headerQty', e.target.value)}
+              onChange={(e) => handleHeaderQtyChange(e.target.value)}
               placeholder="0"
               aria-invalid={Boolean(errors.headerQty)}
               className={fieldClass(Boolean(errors.headerQty))}
@@ -177,11 +199,7 @@ export function UtilizationRecordCard({
         </label>
       </div>
 
-      {record.manualMode ? (
-        <p className="text-xs text-slate-600">
-          This preparation has no ingredient breakdown. Line items below are optional.
-        </p>
-      ) : null}
+
 
       <div className="space-y-1">
         <LineItemsGrid

@@ -8,6 +8,7 @@ const {
   getPurchaseItemModel,
   getPurchaseModel,
   getRunningStockModel,
+  getStockModel,
   getStockTransitionStateModel,
   getTransferItemModel,
   getTransferModel,
@@ -42,6 +43,7 @@ function withScopedModels(req, res, next) {
   const utilizationDal = getUtilizationModel()
   const utilizationItemDal = getUtilizationItemModel()
   const runningStockDal = getRunningStockModel()
+  const stockDal = getStockModel()
   const stockTransitionStateDal = getStockTransitionStateModel()
 
   if (roles.includes('superadmin')) {
@@ -60,6 +62,7 @@ function withScopedModels(req, res, next) {
       utilization: utilizationDal,
       utilizationItem: utilizationItemDal,
       runningStock: runningStockDal,
+      stock: stockDal,
       stockTransitionState: stockTransitionStateDal,
     }
     return next()
@@ -562,6 +565,14 @@ function withScopedModels(req, res, next) {
           })
         },
       },
+      stock: {
+        list: async (query) => {
+          return await stockDal.list({
+            ...query,
+            organization_id: req.user.organization_id,
+          })
+        },
+      },
       stockTransitionState: {
         getById: async (id) => {
           const row = await stockTransitionStateDal.getById(id)
@@ -860,6 +871,14 @@ function withScopedModels(req, res, next) {
           return forbidden(res)
         return await runningStockDal.upsertConfiguration({
           ...payload,
+          organization_id: req.user.organization_id,
+        })
+      },
+    },
+    stock: {
+      list: async (query) => {
+        return await stockDal.list({
+          ...query,
           organization_id: req.user.organization_id,
         })
       },

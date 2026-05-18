@@ -662,6 +662,7 @@ function UtilizationsCreateInnerPage() {
             showRemove={records.length > 1}
             onRemove={() => setRecords((prev) => prev.filter((r) => r.id !== rec.id))}
             onFieldChange={(field, value) => updateRecord(rec.id, { [field]: value })}
+            onRecordPatch={(patch) => updateRecord(rec.id, patch)}
             onRowsChange={(updater) => updateRecordRows(rec.id, updater)}
           />
         ))}

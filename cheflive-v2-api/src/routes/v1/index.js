@@ -15,6 +15,7 @@ const { utilizationItemsRouter } = require('./utilizationItems')
 const { runningStockRouter } = require('./runningStock')
 const { runningStockConfigurationRouter } = require('./runningStockConfiguration')
 const { stockTransitionsRouter } = require('./stockTransitionStates')
+const { stocksRouter } = require('./stocks')
 
 const router = express.Router()
 
@@ -34,5 +35,6 @@ router.use('/utilization-items', utilizationItemsRouter)
 router.use('/running-stock/configuration', runningStockConfigurationRouter)
 router.use('/running-stock', runningStockRouter)
 router.use('/stock-transitions', stockTransitionsRouter)
+router.use('/stocks', stocksRouter)
 
 module.exports = { v1Router: router }

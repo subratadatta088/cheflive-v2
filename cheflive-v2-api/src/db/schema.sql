@@ -129,7 +129,6 @@ CREATE TABLE IF NOT EXISTS preparations (
   name TEXT NOT NULL,
   type TEXT,
 
-  qty REAL,
   unit TEXT,
 
   tags TEXT, -- JSON

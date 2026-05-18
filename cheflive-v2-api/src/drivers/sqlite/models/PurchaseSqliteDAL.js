@@ -9,6 +9,17 @@ const {
 const { PurchaseItemApiRowSchema, PurchaseItemRowSchema } = require('../../../models/purchaseItem/schema')
 const { openSqlite } = require('../db')
 const { applyStockMovement } = require('../stock/applyStockMovement')
+const {
+  buildIngredientPurchaseReportCountSql,
+  buildIngredientPurchaseReportListSql,
+  normalizeIngredientPurchaseReportRow,
+  parseIngredientPurchaseReportQuery,
+} = require('../purchases/ingredientReportQueries')
+const {
+  buildPurchaseTimelineSql,
+  normalizePurchaseTimelineReportRow,
+  parsePurchaseTimelineReportQuery,
+} = require('../purchases/timelineReportQueries')
 
 function run(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -631,6 +642,42 @@ class PurchaseSqliteDAL extends PurchaseModel {
       }
     })
 
+    return { items }
+  }
+
+  /**
+   * Ingredient-wise purchase analytics for a date range (SQL aggregation).
+   * @param {Record<string, unknown>} query
+   * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
+   */
+  async reportIngredientsAggregated(query) {
+    const q = parseIngredientPurchaseReportQuery(query)
+
+    const { sql: countSql, params: countParams } = buildIngredientPurchaseReportCountSql(q)
+    const countRow = await get(this.db, countSql, countParams)
+    const total = Number(countRow?.total) || 0
+
+    if (!total) {
+      return { items: [], total: 0, page: q.page, limit: q.limit }
+    }
+
+    const { sql: listSql, params: listParams } = buildIngredientPurchaseReportListSql(q)
+    const rows = await all(this.db, listSql, listParams)
+    const items = rows.map((row) => normalizeIngredientPurchaseReportRow(row))
+
+    return { items, total, page: q.page, limit: q.limit }
+  }
+
+  /**
+   * Daily purchase timeline (aggregated from purchase_items).
+   * @param {Record<string, unknown>} query
+   * @returns {Promise<{ items: object[] }>}
+   */
+  async reportPurchaseTimeline(query) {
+    const q = parsePurchaseTimelineReportQuery(query)
+    const { sql, params } = buildPurchaseTimelineSql(q)
+    const rows = await all(this.db, sql, params)
+    const items = rows.map((row) => normalizePurchaseTimelineReportRow(row))
     return { items }
   }
 

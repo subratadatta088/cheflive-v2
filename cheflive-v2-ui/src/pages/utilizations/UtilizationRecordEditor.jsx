@@ -36,6 +36,7 @@ import { parseDefaultStockParts } from './utilizationFormUtils.js'
  *   showRemove: boolean,
  *   onRemove: () => void,
  *   onFieldChange: (field: string, value: string) => void,
+ *   onRecordPatch?: (patch: Record<string, unknown>) => void,
  *   onRowsChange: import('react').Dispatch<import('react').SetStateAction<unknown[]>>,
  * }} props
  */
@@ -56,6 +57,7 @@ export function UtilizationRecordEditor({
   showRemove,
   onRemove,
   onFieldChange,
+  onRecordPatch,
   onRowsChange,
 }) {
   const loadConversionsIntoRow = useCallback(
@@ -191,6 +193,8 @@ export function UtilizationRecordEditor({
       showRemove={showRemove}
       onRemove={onRemove}
       onFieldChange={onFieldChange}
+      onRecordPatch={onRecordPatch}
+      scaleLineItemsOnHeaderQty={!lineReadOnly}
       onRowsChange={onRowsChange}
     />
   )

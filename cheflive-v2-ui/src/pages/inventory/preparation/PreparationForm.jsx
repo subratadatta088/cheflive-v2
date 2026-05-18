@@ -51,7 +51,9 @@ export function PreparationForm({
       />
 
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-slate-900">Ingredients</h3>
+        <h3 className="text-sm font-semibold text-slate-900">
+          Ingredients <span className="font-normal text-slate-500">(per 1 {form.unit || 'unit'})</span>
+        </h3>
         <LineItemsGrid
           rows={form.rows}
           onRowsChange={onRowsChange}

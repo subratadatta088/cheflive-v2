@@ -191,6 +191,17 @@ function getStockTransitionStateModel() {
   throw new Error(`Unsupported DB_DRIVER: ${driver}`)
 }
 
+function getStockModel() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { StockSqliteDAL } = require('./sqlite/models/StockSqliteDAL')
+    return new StockSqliteDAL()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
 module.exports = {
   getUserModel,
   getRoleModel,
@@ -209,4 +220,5 @@ module.exports = {
   getUtilizationItemModel,
   getRunningStockModel,
   getStockTransitionStateModel,
+  getStockModel,
 }
