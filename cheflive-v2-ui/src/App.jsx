@@ -241,6 +241,7 @@ function AppShell() {
                 </RequireAuth>
               }
             />
+            <Route path="/analytics/purchases" element={<Navigate to="/report/purchases" replace />} />
             <Route
               path="/report/purchases"
               element={
@@ -249,6 +250,7 @@ function AppShell() {
                 </RequireAuth>
               }
             />
+            <Route path="/analytics/utilizations" element={<Navigate to="/report/usage" replace />} />
             <Route
               path="/report/usage"
               element={

@@ -1,4 +1,5 @@
 const {
+  PurchaseReportFilterSchema,
   PurchaseReportIngredientQuerySchema,
   PurchaseReportIngredientRowSchema,
 } = require('../../../models/purchase/reportSchema')
@@ -66,10 +67,10 @@ ingredient_aggregates AS (
 last_purchase_details AS (
   SELECT
     ingredient_id,
-    purchase_date,
+    purchase_date AS last_purchase_date,
     qty AS last_purchase_qty,
     unit_price AS last_purchase_rate,
-    unit AS line_unit
+    unit AS last_purchase_unit
   FROM (
     SELECT
       fpi.ingredient_id,
@@ -109,6 +110,48 @@ purchase_frequency AS (
   )
   WHERE days_between IS NOT NULL
   GROUP BY ingredient_id
+),
+highest_rate_line AS (
+  SELECT
+    ingredient_id,
+    purchase_date AS highest_rate_date,
+    qty AS highest_rate_qty,
+    unit AS highest_rate_unit
+  FROM (
+    SELECT
+      fpi.ingredient_id,
+      fpi.purchase_date,
+      fpi.qty,
+      fpi.unit,
+      ROW_NUMBER() OVER (
+        PARTITION BY fpi.ingredient_id
+        ORDER BY fpi.unit_price DESC, fpi.purchase_date DESC, fpi.purchase_id DESC, fpi.id DESC
+      ) AS rn
+    FROM filtered_purchase_items fpi
+    WHERE fpi.unit_price IS NOT NULL
+  )
+  WHERE rn = 1
+),
+lowest_rate_line AS (
+  SELECT
+    ingredient_id,
+    purchase_date AS lowest_rate_date,
+    qty AS lowest_rate_qty,
+    unit AS lowest_rate_unit
+  FROM (
+    SELECT
+      fpi.ingredient_id,
+      fpi.purchase_date,
+      fpi.qty,
+      fpi.unit,
+      ROW_NUMBER() OVER (
+        PARTITION BY fpi.ingredient_id
+        ORDER BY fpi.unit_price ASC, fpi.purchase_date DESC, fpi.purchase_id DESC, fpi.id DESC
+      ) AS rn
+    FROM filtered_purchase_items fpi
+    WHERE fpi.unit_price IS NOT NULL
+  )
+  WHERE rn = 1
 )`
 }
 
@@ -165,6 +208,59 @@ LIMIT ? OFFSET ?`
   return { sql, params: [...params, q.organization_id, q.limit, offset] }
 }
 
+/**
+ * Full ingredient analytics for reports (no pagination).
+ * @param {import('zod').infer<typeof PurchaseReportFilterSchema>} q
+ */
+function buildIngredientPurchaseReportAnalyticsSql(q) {
+  const { whereSql, params } = buildFilteredPurchaseItemsWhere(q)
+  const ctes = buildIngredientPurchaseReportCtes({ whereSql })
+
+  const sql = `${ctes}
+SELECT
+  ing.id AS ingredient_id,
+  ing.name AS ingredient_name,
+  ing.unit AS unit,
+  ia.total_purchase_entries,
+  ia.total_quantity,
+  ia.total_subtotal,
+  ROUND(ia.avg_rate, 2) AS avg_rate,
+  ia.highest_rate,
+  ia.lowest_rate,
+  (ia.highest_rate - ia.lowest_rate) AS rate_variance,
+  lpd.last_purchase_date,
+  lpd.last_purchase_qty,
+  lpd.last_purchase_rate,
+  COALESCE(NULLIF(TRIM(lpd.last_purchase_unit), ''), ing.unit) AS last_purchase_unit,
+  pf.purchase_frequency_days_avg,
+  hrl.highest_rate_date,
+  hrl.highest_rate_qty,
+  COALESCE(NULLIF(TRIM(hrl.highest_rate_unit), ''), ing.unit) AS highest_rate_unit,
+  lrl.lowest_rate_date,
+  lrl.lowest_rate_qty,
+  COALESCE(NULLIF(TRIM(lrl.lowest_rate_unit), ''), ing.unit) AS lowest_rate_unit
+FROM ingredient_aggregates ia
+INNER JOIN ingredients ing
+  ON ing.id = ia.ingredient_id
+ AND ing.organization_id = ?
+ AND (ing.deleted_at IS NULL OR ing.deleted_at = '')
+LEFT JOIN last_purchase_details lpd
+  ON lpd.ingredient_id = ia.ingredient_id
+LEFT JOIN purchase_frequency pf
+  ON pf.ingredient_id = ia.ingredient_id
+LEFT JOIN highest_rate_line hrl
+  ON hrl.ingredient_id = ia.ingredient_id
+LEFT JOIN lowest_rate_line lrl
+  ON lrl.ingredient_id = ia.ingredient_id
+ORDER BY ia.total_subtotal DESC, ing.id ASC`
+
+  return { sql, params: [...params, q.organization_id] }
+}
+
+function parsePurchaseReportFilter(raw) {
+  return PurchaseReportFilterSchema.parse(raw)
+}
+
 function parseIngredientPurchaseReportQuery(raw) {
   return PurchaseReportIngredientQuerySchema.parse(raw)
 }
@@ -180,10 +276,18 @@ function normalizeIngredientPurchaseReportRow(row) {
     avg_rate: row.avg_rate ?? null,
     highest_rate: row.highest_rate ?? null,
     lowest_rate: row.lowest_rate ?? null,
+    rate_variance: row.rate_variance ?? null,
     last_purchase_date: row.last_purchase_date ?? null,
     last_purchase_qty: row.last_purchase_qty ?? null,
     last_purchase_rate: row.last_purchase_rate ?? null,
+    last_purchase_unit: row.last_purchase_unit ?? null,
     purchase_frequency_days_avg: row.purchase_frequency_days_avg ?? null,
+    highest_rate_date: row.highest_rate_date ?? null,
+    highest_rate_qty: row.highest_rate_qty ?? null,
+    highest_rate_unit: row.highest_rate_unit ?? null,
+    lowest_rate_date: row.lowest_rate_date ?? null,
+    lowest_rate_qty: row.lowest_rate_qty ?? null,
+    lowest_rate_unit: row.lowest_rate_unit ?? null,
   })
 }
 
@@ -193,6 +297,8 @@ module.exports = {
   buildIngredientPurchaseReportCtes,
   buildIngredientPurchaseReportCountSql,
   buildIngredientPurchaseReportListSql,
+  buildIngredientPurchaseReportAnalyticsSql,
+  parsePurchaseReportFilter,
   parseIngredientPurchaseReportQuery,
   normalizeIngredientPurchaseReportRow,
 }

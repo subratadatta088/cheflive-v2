@@ -7,6 +7,7 @@ const {
   getPreparationItemModel,
   getPurchaseItemModel,
   getPurchaseModel,
+  getPurchaseReportRepository,
   getRunningStockModel,
   getStockModel,
   getStockTransitionStateModel,
@@ -45,6 +46,7 @@ function withScopedModels(req, res, next) {
   const runningStockDal = getRunningStockModel()
   const stockDal = getStockModel()
   const stockTransitionStateDal = getStockTransitionStateModel()
+  const purchaseReportRepo = getPurchaseReportRepository()
 
   if (roles.includes('superadmin')) {
     req.models = {
@@ -57,6 +59,7 @@ function withScopedModels(req, res, next) {
       unitConversion: unitConversionDal,
       purchase: purchaseDal,
       purchaseItem: purchaseItemDal,
+      purchaseReport: purchaseReportRepo,
       transfer: transferDal,
       transferItem: transferItemDal,
       utilization: utilizationDal,
@@ -398,6 +401,29 @@ function withScopedModels(req, res, next) {
           if (!existing) return false
           if (existing.organization_id !== req.user.organization_id) return forbidden(res)
           return await purchaseItemDal.deleteById(id)
+        },
+      },
+      purchaseReport: {
+        listIngredientAnalytics: async (filters) => {
+          if (Number(filters?.organization_id) !== Number(req.user.organization_id)) return forbidden(res)
+          return await purchaseReportRepo.listIngredientAnalytics({
+            ...filters,
+            organization_id: req.user.organization_id,
+          })
+        },
+        fetchGlobalTotals: async (filters) => {
+          if (Number(filters?.organization_id) !== Number(req.user.organization_id)) return forbidden(res)
+          return await purchaseReportRepo.fetchGlobalTotals({
+            ...filters,
+            organization_id: req.user.organization_id,
+          })
+        },
+        listTimeline: async (filters) => {
+          if (Number(filters?.organization_id) !== Number(req.user.organization_id)) return forbidden(res)
+          return await purchaseReportRepo.listTimeline({
+            ...filters,
+            organization_id: req.user.organization_id,
+          })
         },
       },
       transfer: {
@@ -765,6 +791,29 @@ function withScopedModels(req, res, next) {
       },
       updateById: async () => forbidden(res),
       deleteById: async () => forbidden(res),
+    },
+    purchaseReport: {
+      listIngredientAnalytics: async (filters) => {
+        if (Number(filters?.organization_id) !== Number(req.user.organization_id)) return forbidden(res)
+        return await purchaseReportRepo.listIngredientAnalytics({
+          ...filters,
+          organization_id: req.user.organization_id,
+        })
+      },
+      fetchGlobalTotals: async (filters) => {
+        if (Number(filters?.organization_id) !== Number(req.user.organization_id)) return forbidden(res)
+        return await purchaseReportRepo.fetchGlobalTotals({
+          ...filters,
+          organization_id: req.user.organization_id,
+        })
+      },
+      listTimeline: async (filters) => {
+        if (Number(filters?.organization_id) !== Number(req.user.organization_id)) return forbidden(res)
+        return await purchaseReportRepo.listTimeline({
+          ...filters,
+          organization_id: req.user.organization_id,
+        })
+      },
     },
     transfer: {
       create: async () => forbidden(res),

@@ -202,6 +202,17 @@ function getStockModel() {
   throw new Error(`Unsupported DB_DRIVER: ${driver}`)
 }
 
+function getPurchaseReportRepository() {
+  const driver = readDbDriver()
+
+  if (driver === 'sqlite') {
+    const { PurchaseReportRepository } = require('../repositories/PurchaseReportRepository')
+    return new PurchaseReportRepository()
+  }
+
+  throw new Error(`Unsupported DB_DRIVER: ${driver}`)
+}
+
 module.exports = {
   getUserModel,
   getRoleModel,
@@ -221,4 +232,5 @@ module.exports = {
   getRunningStockModel,
   getStockTransitionStateModel,
   getStockModel,
+  getPurchaseReportRepository,
 }

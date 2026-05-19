@@ -1,0 +1,13 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "job-logs/**",
+    "node_modules/**",
+    "temp/**",
+    "cheflive.db",
+    "cheflive.db-journal",
+    "cheflive.db-wal",
+    "cheflive.db-shm"
+  ]
+}

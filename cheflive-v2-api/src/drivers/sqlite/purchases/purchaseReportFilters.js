@@ -1,8 +1,8 @@
-const { PurchaseReportBaseFilterSchema } = require('../../../models/purchase/reportSchema')
+const { PurchaseReportFilterSchema } = require('../../../models/purchase/reportSchema')
 
 /**
  * WHERE + params for purchase_items ⨝ purchases reports (aggregates from line items).
- * @param {import('zod').infer<typeof PurchaseReportBaseFilterSchema>} q
+ * @param {import('zod').infer<typeof PurchaseReportFilterSchema>} q
  */
 function buildPurchaseReportFilters(q) {
   const where = [
@@ -50,11 +50,11 @@ function buildPurchaseReportFilters(q) {
   }
 }
 
-function parsePurchaseReportBaseFilters(raw) {
-  return PurchaseReportBaseFilterSchema.parse(raw)
+function parsePurchaseReportFilters(raw) {
+  return PurchaseReportFilterSchema.parse(raw)
 }
 
 module.exports = {
   buildPurchaseReportFilters,
-  parsePurchaseReportBaseFilters,
+  parsePurchaseReportFilters,
 }
