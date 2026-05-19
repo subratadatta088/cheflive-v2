@@ -50,22 +50,6 @@ class PurchaseService {
     return await this.models.purchase.getItemsByLowStock(params)
   }
 
-  /**
-   * Ingredient-wise purchase report rows for a date range.
-   * @param {Record<string, unknown>} query
-   */
-  async reportIngredientsAggregated(query) {
-    return await this.models.purchase.reportIngredientsAggregated(query)
-  }
-
-  /**
-   * Daily purchase totals for charts / timeline (from purchase_items).
-   * @param {Record<string, unknown>} query
-   */
-  async reportPurchaseTimeline(query) {
-    return await this.models.purchase.reportPurchaseTimeline(query)
-  }
-
   async getById(id) {
     return await this.models.purchase.getById(id)
   }

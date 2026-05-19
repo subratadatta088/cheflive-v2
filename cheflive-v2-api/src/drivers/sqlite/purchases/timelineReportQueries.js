@@ -1,12 +1,12 @@
 const {
-  PurchaseReportTimelineQuerySchema,
+  PurchaseReportFilterSchema,
   PurchaseReportTimelineRowSchema,
 } = require('../../../models/purchase/reportSchema')
 const { buildPurchaseReportFilters } = require('./purchaseReportFilters')
 
 /**
  * Daily purchase timeline from purchase_items (amounts come from line subtotals).
- * @param {import('zod').infer<typeof PurchaseReportTimelineQuerySchema>} q
+ * @param {import('zod').infer<typeof PurchaseReportFilterSchema>} q
  */
 function buildPurchaseTimelineSql(q) {
   const { whereSql, params, needsIngredientJoin } = buildPurchaseReportFilters(q)
@@ -38,7 +38,7 @@ ORDER BY purchase_day ASC`
 }
 
 function parsePurchaseTimelineReportQuery(raw) {
-  return PurchaseReportTimelineQuerySchema.parse(raw)
+  return PurchaseReportFilterSchema.parse(raw)
 }
 
 function normalizePurchaseTimelineReportRow(row) {

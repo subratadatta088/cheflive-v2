@@ -93,11 +93,11 @@ function buildAppMenu(mainWindow) {
       submenu: [
         {
           label: 'Purchases',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/analytics/purchases' }),
+          click: () => mainWindow.webContents.send('app:navigate', { path: '/report/purchases' }),
         },
         {
           label: 'Utilizations',
-          click: () => mainWindow.webContents.send('app:navigate', { path: '/analytics/utilizations' }),
+          click: () => mainWindow.webContents.send('app:navigate', { path: '/report/usage' }),
         },
       ],
     },

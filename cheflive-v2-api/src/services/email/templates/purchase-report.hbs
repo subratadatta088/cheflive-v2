@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{title}}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #ffffff;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #000000;
+    padding: 24px 16px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .email-wrapper { max-width: 80%;min-width: 700px; margin: 0 auto; }
+
+  .header {
+    padding: 0 0 20px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #000000;
+  }
+  .header-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #000000;
+    margin-bottom: 8px;
+  }
+  .header-title {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #000000;
+    line-height: 1.3;
+  }
+  .header-meta {
+    margin-top: 14px;
+  }
+  .header-meta-row {
+    font-size: 13px;
+    color: #000000;
+    line-height: 1.7;
+  }
+  .header-meta-row strong { font-weight: 700; }
+
+  .card-body {
+    background: #ffffff;
+    padding: 8px 0 32px;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #000000;
+    padding-top: 36px;
+    padding-bottom: 20px;
+    border-top: 1px solid #000000;
+    text-align: left;
+  }
+  .section-label:first-of-type {
+    border-top: none;
+    padding-top: 24px;
+  }
+
+  .kpi-grid {
+    display: block;
+    width: 100%;
+  }
+  .kpi-card {
+    display: block;
+    width: 100%;
+    border: 1px solid #000000;
+    padding: 24px 24px 22px;
+    margin-bottom: 16px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .kpi-card:last-child { margin-bottom: 0; }
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #000000;
+    margin-bottom: 12px;
+    text-align: left;
+  }
+  .kpi-value {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #000000;
+    line-height: 1.25;
+    text-align: left;
+  }
+  .kpi-value.text-md {
+    font-size: 18px;
+    line-height: 1.35;
+  }
+  .kpi-value .currency {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .kpi-sub {
+    font-size: 13px;
+    color: #000000;
+    margin-top: 10px;
+    line-height: 1.5;
+    text-align: left;
+  }
+  .kpi-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 4px 0 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #000000;
+    text-align: left;
+    border-top: 1px solid #000000;
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .volatile-block { margin-top: 4px; text-align: left; }
+  .volatile-stats {
+    display: table;
+    width: 100%;
+    max-width: 420px;
+    margin-top: 16px;
+    border-collapse: collapse;
+  }
+  .volatile-stat {
+    display: table-cell;
+    text-align: left;
+    vertical-align: top;
+    padding-right: 24px;
+    width: 33%;
+  }
+  .volatile-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #000000;
+    margin-bottom: 6px;
+  }
+  .volatile-stat-value {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 4px;
+  }
+
+  .timeline-row {
+    display: table;
+    width: 100%;
+    padding: 14px 0;
+    border-bottom: 1px solid #000000;
+  }
+  .timeline-row:last-child { border-bottom: none; }
+  .timeline-date,
+  .timeline-bar-cell,
+  .timeline-amount {
+    display: table-cell;
+    vertical-align: middle;
+    font-size: 13px;
+    color: #000000;
+  }
+  .timeline-date {
+    width: 110px;
+    font-weight: 700;
+    text-align: left;
+    padding-right: 12px;
+  }
+  .timeline-bar-cell { width: auto; padding-right: 12px; }
+  .timeline-bar-wrap {
+    background: #eeeeee;
+    height: 8px;
+    width: 100%;
+    border: 1px solid #000000;
+  }
+  .timeline-bar {
+    height: 100%;
+    background: #000000;
+  }
+  .timeline-amount {
+    width: 90px;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .timeline-pills {
+    margin-top: 14px;
+    text-align: left;
+  }
+  .timeline-pill {
+    display: inline-block;
+    margin: 0 10px 8px 0;
+    padding: 6px 12px;
+    border: 1px solid #000000;
+    font-size: 12px;
+    color: #000000;
+  }
+  .timeline-pill strong { font-weight: 700; }
+
+  .pie-section { margin-top: 4px; }
+  .pie-container { margin-bottom: 20px; text-align: left; }
+  .legend-row {
+    display: table;
+    width: 100%;
+    padding: 8px 0;
+    border-bottom: 1px solid #cccccc;
+    font-size: 13px;
+    color: #000000;
+  }
+  .legend-row:last-child { border-bottom: none; }
+  .legend-dot-cell { display: table-cell; width: 20px; vertical-align: middle; }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    background: #000000;
+    border: 1px solid #000000;
+  }
+  .legend-name-cell {
+    display: table-cell;
+    vertical-align: middle;
+    text-align: left;
+    padding: 0 12px;
+    font-weight: 400;
+  }
+  .legend-pct-cell {
+    display: table-cell;
+    width: 56px;
+    vertical-align: middle;
+    text-align: right;
+    font-weight: 700;
+  }
+  .legend-amt-cell {
+    display: table-cell;
+    width: 80px;
+    vertical-align: middle;
+    text-align: right;
+    font-size: 12px;
+  }
+
+  .highlights-list {
+    list-style: disc;
+    padding-left: 20px;
+    margin: 0;
+  }
+  .highlight-item {
+    padding: 8px 0;
+    font-size: 13px;
+    color: #000000;
+    line-height: 1.55;
+    text-align: left;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid #000000;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    color: #000000;
+  }
+  thead th {
+    padding: 12px 10px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #000000;
+    border-bottom: 2px solid #000000;
+    background: #ffffff;
+  }
+  thead th.num { text-align: right; }
+  tbody td {
+    padding: 11px 10px;
+    border-bottom: 1px solid #cccccc;
+    vertical-align: top;
+    text-align: left;
+    color: #000000;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.ing-name { font-weight: 700; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .spend-bar-bg {
+    background: #eeeeee;
+    height: 5px;
+    margin-top: 4px;
+    border: 1px solid #000000;
+  }
+  .spend-bar-fill {
+    height: 100%;
+    background: #000000;
+  }
+  .variance-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: #000000;
+  }
+
+  .email-footer {
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid #000000;
+    text-align: left;
+    font-size: 11px;
+    color: #000000;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+
+  <div class="header">
+    <div class="header-eyebrow">Purchase Report</div>
+    <div class="header-title">Procurement Summary</div>
+    <div class="header-meta">
+      <div class="header-meta-row"><strong>Period:</strong> {{periodLabel}}</div>
+      <div class="header-meta-row"><strong>Entries:</strong> {{meta.entriesCount}} purchase orders</div>
+      <div class="header-meta-row"><strong>Items:</strong> {{meta.ingredientsCount}} unique ingredients</div>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="section-label">Key Performance Indicators</div>
+    <div class="kpi-grid">
+
+      <div class="kpi-card">
+        <div class="kpi-label">Total Spend</div>
+        <div class="kpi-value"><span class="currency">₹</span>{{number kpis.totalSpend 0}}</div>
+        <div class="kpi-sub">Across {{kpis.totalEntries}} purchase entries</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Total Quantity</div>
+        <div class="kpi-value">{{number kpis.totalQuantity 1}}</div>
+        <div class="kpi-sub">Units across all line items</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Highest Spend Ingredient</div>
+        <div class="kpi-value text-md">{{kpis.highestSpend.name}}</div>
+        <div class="kpi-sub">{{currencyInr kpis.highestSpend.spend}} · {{number kpis.highestSpend.quantity 1}} {{kpis.highestSpend.unit}}</div>
+        <div class="kpi-badge">{{percent kpis.highestSpend.percentage}} of total spend</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Most Purchased Ingredient</div>
+        <div class="kpi-value text-md">{{kpis.mostFrequent.name}}</div>
+        <div class="kpi-sub">{{kpis.mostFrequent.frequency}} purchases · {{number kpis.mostFrequent.quantity 1}} {{kpis.mostFrequent.unit}} · {{currencyInr kpis.mostFrequent.spend}}</div>
+        <div class="kpi-badge">Highest purchase frequency</div>
+      </div>
+
+      {{#if kpis.mostVolatile}}
+      <div class="kpi-card">
+        <div class="kpi-label">Most Volatile Ingredient</div>
+        <div class="volatile-block">
+          <div class="kpi-value text-md">{{kpis.mostVolatile.name}}</div>
+          <div class="kpi-sub">Rate spread: {{currencyInr kpis.mostVolatile.spread}}</div>
+          <div class="volatile-stats">
+            <div class="volatile-stat">
+              <div class="volatile-stat-label">Low</div>
+              <div class="volatile-stat-value">{{currencyInr kpis.mostVolatile.lowRate}}</div>
+              <div class="kpi-sub">{{number kpis.mostVolatile.lowQty 1}} {{kpis.mostVolatile.lowUnit}}</div>
+            </div>
+            <div class="volatile-stat">
+              <div class="volatile-stat-label">High</div>
+              <div class="volatile-stat-value">{{currencyInr kpis.mostVolatile.highRate}}</div>
+              <div class="kpi-sub">{{number kpis.mostVolatile.highQty 1}} {{kpis.mostVolatile.highUnit}}</div>
+            </div>
+            <div class="volatile-stat">
+              <div class="volatile-stat-label">Spread</div>
+              <div class="volatile-stat-value">{{currencyInr kpis.mostVolatile.spread}}</div>
+              <div class="kpi-sub">Variance</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {{/if}}
+
+    </div>
+
+    {{#if timeline.rows.length}}
+    <div class="section-label">Purchase Timeline</div>
+    {{#each timeline.rows}}
+    <div class="timeline-row">
+      <div class="timeline-date">{{dateLabel}}</div>
+      <div class="timeline-bar-cell">
+        <div class="timeline-bar-wrap">
+          <div class="timeline-bar" style="width:{{barWidth}}%;"></div>
+        </div>
+      </div>
+      <div class="timeline-amount">{{currencyInr amount}}</div>
+    </div>
+    {{/each}}
+    <div class="timeline-pills">
+      {{#each timeline.pills}}
+      <span class="timeline-pill"><strong>{{value}}</strong> {{label}}</span>
+      {{/each}}
+    </div>
+    {{/if}}
+
+    {{#if pie.segments.length}}
+    <div class="section-label">Spend Distribution (Top 5)</div>
+    <div class="pie-section">
+      <div class="pie-container">
+        <svg width="160" height="160" viewBox="0 0 160 160">
+          {{#each pie.segments}}
+          <circle cx="80" cy="80" r="62" fill="none" stroke="{{color}}" stroke-width="28"
+            stroke-dasharray="{{dasharray}}" stroke-dashoffset="{{dashoffset}}" transform="rotate(-90 80 80)"/>
+          {{/each}}
+          <circle cx="80" cy="80" r="46" fill="#ffffff" stroke="#000000" stroke-width="1"/>
+          <text x="80" y="76" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#000000">{{currencyInr pie.totalSpend}}</text>
+          <text x="80" y="92" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="700" fill="#000000">TOTAL</text>
+        </svg>
+      </div>
+      {{#each pie.segments}}
+      <div class="legend-row">
+        <div class="legend-dot-cell"><div class="legend-dot" style="background:{{color}};"></div></div>
+        <div class="legend-name-cell">{{#if isOthers}}Others ({{othersCount}} items){{else}}{{ingredient_name}}{{/if}}</div>
+        <div class="legend-pct-cell">{{percent percentage}}</div>
+        <div class="legend-amt-cell">{{currencyInr total_spend}}</div>
+      </div>
+      {{/each}}
+    </div>
+    {{/if}}
+
+    {{#if highlights.length}}
+    <div class="section-label">Highlights</div>
+    <ul class="highlights-list">
+      {{#each highlights}}
+      <li class="highlight-item">{{text}}</li>
+      {{/each}}
+    </ul>
+    {{/if}}
+
+    {{#if tableRows.length}}
+    <div class="section-label">Ingredient Purchase Breakdown</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Ingredient</th>
+            <th>Unit</th>
+            <th class="num">Qty</th>
+            <th class="num">Avg rate</th>
+            <th class="num">Total spend</th>
+            <th>Spend %</th>
+            <th class="num">Variance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each tableRows}}
+          <tr>
+            <td>{{index}}</td>
+            <td class="ing-name">{{ingredient_name}}</td>
+            <td>{{unit}}</td>
+            <td class="num">{{number total_quantity 1}}</td>
+            <td class="num">{{currencyInr avg_rate}}</td>
+            <td class="num"><strong>{{currencyInr total_spend}}</strong></td>
+            <td>
+              <div>{{percent spend_percentage}}</div>
+              <div class="spend-bar-bg"><div class="spend-bar-fill" style="width:{{spend_percentage}}%;"></div></div>
+            </td>
+            <td class="num">{{#if has_variance}}<span class="variance-badge">{{currencyInr rate_variance}}</span>{{else}}—{{/if}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+    {{/if}}
+
+  </div>
+
+  <div class="email-footer">
+    Generated on {{generatedAtLabel}} · ChefLive Purchase Report<br>
+    This is an automated report. Please do not reply to this email.
+  </div>
+
+</div>
+</body>
+</html>
